@@ -2,8 +2,8 @@ package rules
 
 import (
 	"fmt"
+	"hash/crc32"
 	"sort"
-	"time"
 
 	"github.com/codewithboateng/jclift/internal/ir"
 )
@@ -32,9 +32,9 @@ func Evaluate(run *ir.Run) []ir.Finding {
 		for _, rule := range rules {
 			fs := rule.Eval(job)
 			for k := range fs {
-				// Normalize finding IDs if not set
+				// Deterministic, unique ID per finding payload
 				if fs[k].ID == "" {
-					fs[k].ID = fmt.Sprintf("%s-%d", rule.ID, time.Now().UnixNano())
+					fs[k].ID = makeID(rule.ID, job.Name, fs[k].Step, fs[k].Evidence, k)
 				}
 				// Attach job if missing
 				if fs[k].Job == "" {
@@ -58,4 +58,10 @@ func Evaluate(run *ir.Run) []ir.Finding {
 		return sev[all[i].Severity] > sev[all[j].Severity]
 	})
 	return all
+}
+
+func makeID(ruleID, job, step, evidence string, idx int) string {
+	data := fmt.Sprintf("%s|%s|%s|%s|%d", ruleID, job, step, evidence, idx)
+	sum := crc32.ChecksumIEEE([]byte(data))
+	return fmt.Sprintf("%s-%08x", ruleID, sum)
 }

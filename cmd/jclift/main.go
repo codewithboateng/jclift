@@ -15,6 +15,7 @@ import (
 	"github.com/codewithboateng/jclift/internal/storage"
 )
 
+
 func main() {
 	if len(os.Args) < 2 {
 		usage()
@@ -52,6 +53,7 @@ func analyzeCmd(args []string) {
 	inPath := fs.String("path", "", "Path to input JCL directory")
 	outDir := fs.String("out", "./reports", "Output directory for reports")
 	dbPath := fs.String("db", "./jclift.db", "SQLite database path")
+	mipsUSD := fs.Float64("mips-usd", 0, "Optional: USD per MIPS unit (for $ projections)")
 	_ = fs.Parse(args)
 
 	if *inPath == "" {
@@ -63,15 +65,16 @@ func analyzeCmd(args []string) {
 		os.Exit(1)
 	}
 
-	// Parse JCL → IR
+	// Parse
 	run, diags := parser.Parse(*inPath)
 	if len(diags.Warnings) > 0 {
 		fmt.Fprintln(os.Stderr, "parse warnings:", diags.Warnings)
 	}
 	run.ID = fmt.Sprintf("run-%d", time.Now().Unix())
 	run.StartedAt = time.Now().UTC()
+	run.Context.MIPSToUSD = *mipsUSD
 
-	// Cost annotate (heuristic placeholder)
+	// Cost annotate
 	for i := range run.Jobs {
 		for j := range run.Jobs[i].Steps {
 			c := cost.Estimate(&run.Jobs[i].Steps[j], run.Context)
@@ -79,7 +82,10 @@ func analyzeCmd(args []string) {
 		}
 	}
 
-	// Persist
+	// Rules
+	run.Findings = rules.Evaluate(&run)
+
+	// Persist & report
 	db, err := storage.OpenSQLite(*dbPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "db open error:", err)
@@ -95,16 +101,12 @@ func analyzeCmd(args []string) {
 		os.Exit(1)
 	}
 
-	// Reports (JSON + HTML placeholders)
 	jsonPath, _ := reporting.WriteJSON(run.ID, *outDir, &run)
 	htmlPath, _ := reporting.WriteHTML(run.ID, *outDir, &run)
-
 	fmt.Printf("Analyze OK\n  Run: %s\n  JSON: %s\n  HTML: %s\n  DB: %s\n",
 		run.ID, jsonPath, htmlPath, filepath.Clean(*dbPath))
-
-	// Evaluate rules → findings
-	run.Findings = rules.Evaluate(&run)
 }
+
 
 func reportCmd(args []string) {
 	fs := flag.NewFlagSet("report", flag.ExitOnError)
