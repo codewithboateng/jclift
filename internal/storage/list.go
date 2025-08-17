@@ -7,7 +7,6 @@ import (
 	"github.com/codewithboateng/jclift/internal/ir"
 )
 
-
 // ListRuns returns a lightweight list of runs with counts.
 func (db *DB) ListRuns(limit, offset int) ([]RunRow, error) {
 	const q = `
@@ -69,6 +68,14 @@ func (db *DB) ListFindings(runID, minSeverity string) ([]ir.Finding, error) {
 		out = append(out, f)
 	}
 	return out, rows.Err()
+}
+
+// LoadLatestRun returns the most recent run by started_at then id.
+func (db *DB) LoadLatestRun() (ir.Run, error) {
+	var id string
+	err := db.conn.QueryRow(`SELECT id FROM runs ORDER BY started_at DESC, id DESC LIMIT 1`).Scan(&id)
+	if err != nil { return ir.Run{}, err }
+	return db.LoadRun(id)
 }
 
 // Optional helper used by future endpoints.

@@ -19,7 +19,10 @@ type Store interface {
 	LoadRun(id string) (ir.Run, error)
 	ListFindings(runID, minSeverity string) ([]ir.Finding, error)
 
-	// Waivers
+	// NEW
+	LoadLatestRun() (ir.Run, error)
+
+	// Waivers (from previous commit)
 	ListWaivers(activeOnly bool) ([]storage.Waiver, error)
 	CreateWaiver(ruleID, job, step, pattern, reason, createdBy string, expires time.Time) (int64, error)
 	RevokeWaiver(id int64, by string) error
@@ -50,12 +53,9 @@ func (s *Server) Routes() http.Handler {
 
 	withCORS := func(h http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
-			origin := s.pickCORSOrigin(r)
-			if origin != "" {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
-			}
+			w.Header().Set("Access-Control-Allow-Origin", "*")
 			w.Header().Set("Vary", "Origin")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS, POST")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 			if r.Method == http.MethodOptions {
 				w.WriteHeader(http.StatusNoContent)
@@ -65,24 +65,31 @@ func (s *Server) Routes() http.Handler {
 		}
 	}
 
+	// Health
 	mux.HandleFunc("GET /api/v1/health", withCORS(s.handleHealth))
+
+	// Auth
 	mux.HandleFunc("POST /api/v1/auth/login", withCORS(s.handleLogin))
-	mux.HandleFunc("POST /api/v1/auth/logout", withCORS(s.handleLogout))
+	mux.HandleFunc("POST /api/v1/auth/logout", withCORS(withAuth(s, s.handleLogout, "auth:logout")))
+
+	// Me (ONLY ONCE)
 	mux.HandleFunc("GET /api/v1/me", withCORS(withAuth(s, s.handleMe, "me")))
 
-	mux.HandleFunc("GET /api/v1/runs", withCORS(withAuth(s, s.handleListRuns, "runs:list")))
-	mux.HandleFunc("GET /api/v1/runs/latest", withCORS(withAuth(s, s.handleGetLatestRun, "runs:latest")))
-	mux.HandleFunc("GET /api/v1/runs/{id}", withCORS(withAuth(s, s.handleGetRun, "runs:get")))
-	mux.HandleFunc("GET /api/v1/runs/{id}/findings", withCORS(withAuth(s, s.handleListFindings, "findings:list")))
-	mux.HandleFunc("GET /api/v1/rules", withCORS(withAuth(s, s.handleListRules, "rules:list")))
+	// Runs
+	mux.HandleFunc("GET /api/v1/runs", withCORS(s.handleListRuns))
+	mux.HandleFunc("GET /api/v1/runs/latest", withCORS(s.handleGetLatest))
+	mux.HandleFunc("GET /api/v1/runs/{id}", withCORS(s.handleGetRun))
+	mux.HandleFunc("GET /api/v1/runs/{id}/findings", withCORS(s.handleListFindings))
 
-	// Waivers (protected, admin for create/revoke)
+	// Rules inventory
+	mux.HandleFunc("GET /api/v1/rules", withCORS(s.handleRules))
+
+	// Waivers
 	mux.HandleFunc("GET /api/v1/waivers", withCORS(withAuth(s, s.handleListWaivers, "waivers:list")))
 	mux.HandleFunc("POST /api/v1/waivers", withCORS(withAdmin(s, s.handleCreateWaiver, "waivers:create")))
 	mux.HandleFunc("POST /api/v1/waivers/{id}/revoke", withCORS(withAdmin(s, s.handleRevokeWaiver, "waivers:revoke")))
 
-
-	// fallback
+	// Fallback 404
 	mux.HandleFunc("/", withCORS(func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 	}))
@@ -207,4 +214,30 @@ func clamp(x, lo, hi int) int {
 		return hi
 	}
 	return x
+}
+
+
+
+// GET /api/v1/rules (IDs + summaries; no auth needed for read-only)
+func (s *Server) handleRules(w http.ResponseWriter, r *http.Request) {
+	type R struct {
+		ID      string `json:"id"`
+		Summary string `json:"summary"`
+	}
+	var out []R
+	for _, rr := range rules.List() {
+		out = append(out, R{ID: rr.ID, Summary: rr.Summary})
+	}
+	// stable order already guaranteed by rules.List()
+	writeJSON(w, http.StatusOK, map[string]any{"items": out, "count": len(out)})
+}
+
+// GET /api/v1/runs/latest
+func (s *Server) handleGetLatest(w http.ResponseWriter, r *http.Request) {
+	run, err := s.DB.LoadLatestRun()
+	if err != nil {
+		s.err(w, http.StatusNotFound, "no runs")
+		return
+	}
+	writeJSON(w, http.StatusOK, run)
 }

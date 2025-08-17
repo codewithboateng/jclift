@@ -22,6 +22,9 @@ type Context struct {
 
 	Geometry Geometry  `json:"geometry,omitempty"`
 	Model    CostModel `json:"model,omitempty"`
+	
+	// NEW: how many findings were waived (by active waivers) during analyze
+	WaivedCount int `json:"waived_count,omitempty"`
 }
 
 type Job struct {

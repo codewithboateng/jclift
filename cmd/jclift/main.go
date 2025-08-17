@@ -170,6 +170,7 @@ func analyzeCmd(args []string) {
 	if len(waivers) > 0 {
 		kept, waived := rules.ApplyWaivers(run.Findings, waivers)
 		run.Findings = kept
+		run.Context.WaivedCount = waived // <-- record how many were waived
 		slog.Info("waivers applied", "waived", waived, "remaining", len(run.Findings))
 	}
 

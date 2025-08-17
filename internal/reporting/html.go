@@ -58,6 +58,9 @@ func WriteHTML(runID, outDir string, run *ir.Run) (string, error) {
 			run.Context.Model.MIPSPerCPU,
 		)
 	}
+	if run.Context.WaivedCount > 0 {
+	fmt.Fprintf(f, "<p class='dim'>Waivers applied: %d (findings suppressed by policy)</p>", run.Context.WaivedCount)
+}
 
 	// Top Offenders (by USD desc, then MIPS)
 	type tf struct {
