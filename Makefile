@@ -264,3 +264,8 @@ pkg-airgap: build ## Create a tarball with binary + configs + sample
 analyze-dsl: build ## Analyze using a DSL rules pack: make analyze-dsl PACK=configs/rules.example.yaml
 	@test -n "$(PACK)" || { echo "Usage: make analyze-dsl PACK=path/to/rules.yaml"; exit 2; }
 	$(BIN) analyze --path $(SAMPLES) --out $(REPORTS) --config $(CFG) --rules-pack $(PACK)
+
+.PHONY: serve
+serve: build ## Run REST API server (default :8080)
+	@./dist/jclift serve --db $(DB)
+

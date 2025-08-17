@@ -4,157 +4,120 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"time"
 
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // CGO-free SQLite driver
 
 	"github.com/codewithboateng/jclift/internal/ir"
 )
 
-type DB struct{ sql *sql.DB }
+// DB is the concrete storage backed by SQLite.
+type DB struct {
+	conn *sql.DB
+}
 
+// OpenSQLite opens (and creates if missing) a SQLite DB at path.
 func OpenSQLite(path string) (*DB, error) {
-	s, err := sql.Open("sqlite", path)
+	// Pragmas via DSN keep it portable with the modernc driver.
+	dsn := "file:" + path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)"
+	c, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
-	return &DB{sql: s}, nil
+	return &DB{conn: c}, nil
 }
 
-func (d *DB) Close() error { return d.sql.Close() }
+func (db *DB) Close() error { return db.conn.Close() }
 
-func (d *DB) CreateSchema() error {
-	_, err := d.sql.Exec(`
-PRAGMA journal_mode=WAL;
-
-CREATE TABLE IF NOT EXISTS runs(
-  id TEXT PRIMARY KEY,
-  started_at TEXT,
-  source TEXT,
+// CreateSchema ensures tables exist.
+func (db *DB) CreateSchema() error {
+	_, err := db.conn.Exec(`
+CREATE TABLE IF NOT EXISTS runs (
+  id         TEXT PRIMARY KEY,
+  started_at TEXT,          -- RFC3339
+  source     TEXT,
   ir_version TEXT,
-  payload JSON
+  run_json   TEXT NOT NULL
 );
-
-CREATE TABLE IF NOT EXISTS jobs(
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  run_id TEXT NOT NULL,
-  name TEXT,
-  class TEXT,
-  owner TEXT
-);
-
-CREATE TABLE IF NOT EXISTS steps(
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  job_id INTEGER NOT NULL,
-  ordinal INTEGER,
-  name TEXT,
-  program TEXT,
-  conditions TEXT,
-  annotations_json JSON
-);
-
-CREATE TABLE IF NOT EXISTS findings(
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  run_id TEXT NOT NULL,
-  job_name TEXT,
-  step_name TEXT,
-  rule_id TEXT,
-  type TEXT,
-  severity TEXT,
-  message TEXT,
-  evidence TEXT,
+CREATE TABLE IF NOT EXISTS findings (
+  id           TEXT,
+  run_id       TEXT NOT NULL,
+  job          TEXT,
+  step         TEXT,
+  rule_id      TEXT,
+  type         TEXT,
+  severity     TEXT,
+  message      TEXT,
+  evidence     TEXT,
   savings_mips REAL,
-  savings_usd REAL,
-  metadata_json JSON
+  savings_usd  REAL,
+  PRIMARY KEY (id, run_id),
+  FOREIGN KEY(run_id) REFERENCES runs(id) ON DELETE CASCADE
 );
-
 CREATE INDEX IF NOT EXISTS idx_findings_run ON findings(run_id);
 CREATE INDEX IF NOT EXISTS idx_findings_rule ON findings(rule_id);
 `)
 	return err
 }
 
-func (d *DB) SaveRun(run *ir.Run) error {
-	if run == nil || run.ID == "" {
-		return errors.New("invalid run")
-	}
+// SaveRun upserts a run JSON and (re)writes its findings.
+func (db *DB) SaveRun(run *ir.Run) error {
 	b, err := json.Marshal(run)
 	if err != nil {
 		return err
 	}
-	tx, err := d.sql.Begin()
+	ts := run.StartedAt.UTC().Format(time.RFC3339Nano)
+
+	tx, err := db.conn.Begin()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.Exec(`INSERT INTO runs(id, started_at, source, ir_version, payload) VALUES(?,?,?,?,?)`,
-		run.ID, run.StartedAt.UTC().Format(timeLayout), run.Source, run.IRVersion, string(b)); err != nil {
+	if _, err := tx.Exec(
+		`INSERT INTO runs (id, started_at, source, ir_version, run_json)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET started_at=excluded.started_at, source=excluded.source, ir_version=excluded.ir_version, run_json=excluded.run_json`,
+		run.ID, ts, run.Source, run.IRVersion, string(b),
+	); err != nil {
 		return err
 	}
 
-	// Insert jobs/steps
-	jobIDs := make([]int64, len(run.Jobs))
-	for i, j := range run.Jobs {
-		res, err := tx.Exec(`INSERT INTO jobs(run_id, name, class, owner) VALUES(?,?,?,?)`,
-			run.ID, j.Name, j.Class, j.Owner)
+	if _, err := tx.Exec(`DELETE FROM findings WHERE run_id = ?`, run.ID); err != nil {
+		return err
+	}
+	if len(run.Findings) > 0 {
+		stmt, err := tx.Prepare(`
+			INSERT INTO findings
+			(id, run_id, job, step, rule_id, type, severity, message, evidence, savings_mips, savings_usd)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 		if err != nil {
 			return err
 		}
-		jobID, _ := res.LastInsertId()
-		jobIDs[i] = jobID
-
-		// steps
-		for _, s := range j.Steps {
-			ann, _ := json.Marshal(s.Annotations)
-			if _, err := tx.Exec(`INSERT INTO steps(job_id, ordinal, name, program, conditions, annotations_json)
-				VALUES(?,?,?,?,?,?)`,
-				jobID, s.Ordinal, s.Name, s.Program, s.Conditions, string(ann)); err != nil {
+		defer stmt.Close()
+		for _, f := range run.Findings {
+			if _, err := stmt.Exec(f.ID, run.ID, f.Job, f.Step, f.RuleID, f.Type, f.Severity, f.Message, f.Evidence, f.SavingsMIPS, f.SavingsUSD); err != nil {
 				return err
 			}
 		}
 	}
 
-	// Insert findings
-	for _, f := range run.Findings {
-		meta, _ := json.Marshal(f.Metadata)
-		if _, err := tx.Exec(`INSERT INTO findings(run_id, job_name, step_name, rule_id, type, severity, message, evidence, savings_mips, savings_usd, metadata_json)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
-			run.ID, f.Job, f.Step, f.RuleID, f.Type, f.Severity, f.Message, f.Evidence, f.SavingsMIPS, f.SavingsUSD, string(meta)); err != nil {
-			return err
+	return tx.Commit()
+}
+
+// LoadRun returns the full run (from stored JSON).
+func (db *DB) LoadRun(id string) (ir.Run, error) {
+	var s string
+	row := db.conn.QueryRow(`SELECT run_json FROM runs WHERE id = ?`, id)
+	if err := row.Scan(&s); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ir.Run{}, err
 		}
+		return ir.Run{}, err
 	}
-
-	if err := tx.Commit(); err != nil {
-		return err
+	var run ir.Run
+	if err := json.Unmarshal([]byte(s), &run); err != nil {
+		return ir.Run{}, err
 	}
-	return nil
-}
-
-func (d *DB) LoadRun(id string) (ir.Run, error) {
-	var r ir.Run
-	row := d.sql.QueryRow(`SELECT payload FROM runs WHERE id = ?`, id)
-	var payload string
-	if err := row.Scan(&payload); err != nil {
-		return r, err
-	}
-	if err := json.Unmarshal([]byte(payload), &r); err != nil {
-		return r, err
-	}
-	return r, nil
-}
-
-const timeLayout = "2006-01-02T15:04:05Z07:00"
-
-func (d *DB) Summary(runID string) (string, int, int, error) {
-	var jobs, finds int
-	row := d.sql.QueryRow(`SELECT COUNT(1) FROM jobs WHERE run_id = ?`, runID)
-	if err := row.Scan(&jobs); err != nil {
-		return "", 0, 0, err
-	}
-	row = d.sql.QueryRow(`SELECT COUNT(1) FROM findings WHERE run_id = ?`, runID)
-	if err := row.Scan(&finds); err != nil {
-		return "", 0, 0, err
-	}
-	return fmt.Sprintf("run=%s jobs=%d findings=%d", runID, jobs, finds), jobs, finds, nil
+	return run, nil
 }

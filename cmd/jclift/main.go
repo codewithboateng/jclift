@@ -9,6 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"net/http"
+	"github.com/codewithboateng/jclift/internal/api"
+
 	"github.com/codewithboateng/jclift/internal/cost"
 	"github.com/codewithboateng/jclift/internal/ir"
 	"github.com/codewithboateng/jclift/internal/parser"
@@ -26,6 +29,8 @@ func main() {
 		os.Exit(2)
 	}
 	switch os.Args[1] {
+	case "serve":
+		serveCmd(os.Args[2:])
 	case "analyze":
 		analyzeCmd(os.Args[2:])
 	case "report":
@@ -253,4 +258,35 @@ func diffCmd(args []string) {
 	}
 	path, _ := reporting.WriteDiffJSON(*base, *head, *outDir, &br, &hr)
 	fmt.Printf("Diff OK\n  %s\n", path)
+}
+
+func serveCmd(args []string) {
+	fs := flag.NewFlagSet("serve", flag.ExitOnError)
+	configPath := fs.String("config", "", "Path to YAML config (optional)")
+	dbPath := fs.String("db", "", "SQLite database path")
+	listen := fs.String("listen", ":8080", "Listen address (e.g. :8080)")
+	_ = fs.Parse(args)
+
+	// Config + logger
+	cfg, _ := shared.LoadConfig(*configPath)
+	logger := shared.InitLogger(cfg.Logging.Format, cfg.Logging.Level)
+
+	// Resolve DB path
+	if *dbPath == "" {
+		*dbPath = cfg.Database.DSN
+	}
+	db, err := storage.OpenSQLite(*dbPath)
+	if err != nil {
+		slog.Error("db open error", "err", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	// Start server
+	s := &api.Server{DB: db, Logger: logger}
+	slog.Info("api listening", "addr", *listen)
+	if err := http.ListenAndServe(*listen, s.Routes()); err != nil {
+		slog.Error("api serve error", "err", err)
+		os.Exit(1)
+	}
 }
