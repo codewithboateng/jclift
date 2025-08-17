@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/codewithboateng/jclift/internal/storage"
 )
@@ -25,6 +26,18 @@ func withAuth(s *Server, next http.HandlerFunc, action string) http.HandlerFunc 
 		next(w, r.WithContext(ctx))
 	}
 }
+
+func withAdmin(s *Server, next http.HandlerFunc, action string) http.HandlerFunc {
+	return withAuth(s, func(w http.ResponseWriter, r *http.Request) {
+		u, ok := userFromCtx(r.Context())
+		if !ok || strings.ToLower(u.Role) != "admin" {
+			s.err(w, http.StatusForbidden, "admin required")
+			return
+		}
+		next(w, r)
+	}, action)
+}
+
 
 func userFromCtx(ctx context.Context) (storage.User, bool) {
 	u, ok := ctx.Value(userKey).(storage.User)

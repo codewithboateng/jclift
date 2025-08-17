@@ -18,6 +18,11 @@ type Store interface {
 	ListRuns(limit, offset int) ([]storage.RunRow, error)
 	LoadRun(id string) (ir.Run, error)
 	ListFindings(runID, minSeverity string) ([]ir.Finding, error)
+
+	// Waivers
+	ListWaivers(activeOnly bool) ([]storage.Waiver, error)
+	CreateWaiver(ruleID, job, step, pattern, reason, createdBy string, expires time.Time) (int64, error)
+	RevokeWaiver(id int64, by string) error
 }
 
 // UserStore is the auth/audit contract the API uses.
@@ -27,6 +32,8 @@ type UserStore interface {
 	GetSession(string) (storage.User, error)
 	DeleteSession(string) error
 	LogAudit(username, action, resource string, meta map[string]any) error
+
+	
 }
 
 type Server struct {
@@ -68,6 +75,11 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/runs/{id}", withCORS(withAuth(s, s.handleGetRun, "runs:get")))
 	mux.HandleFunc("GET /api/v1/runs/{id}/findings", withCORS(withAuth(s, s.handleListFindings, "findings:list")))
 	mux.HandleFunc("GET /api/v1/rules", withCORS(withAuth(s, s.handleListRules, "rules:list")))
+
+	// Waivers (protected, admin for create/revoke)
+	mux.HandleFunc("GET /api/v1/waivers", withCORS(withAuth(s, s.handleListWaivers, "waivers:list")))
+	mux.HandleFunc("POST /api/v1/waivers", withCORS(withAdmin(s, s.handleCreateWaiver, "waivers:create")))
+	mux.HandleFunc("POST /api/v1/waivers/{id}/revoke", withCORS(withAdmin(s, s.handleRevokeWaiver, "waivers:revoke")))
 
 
 	// fallback

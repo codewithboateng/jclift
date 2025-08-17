@@ -80,7 +80,18 @@ CREATE TABLE IF NOT EXISTS audit (
   meta_json TEXT
 );
 
-
+CREATE TABLE IF NOT EXISTS waivers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  rule_id     TEXT NOT NULL,
+  job         TEXT,              -- optional exact match; NULL = any
+  step        TEXT,              -- optional exact match; NULL = any
+  pattern_sub TEXT,              -- optional substring to match evidence/message
+  reason      TEXT NOT NULL,
+  expires_at  TEXT NOT NULL,     -- RFC3339Nano
+  created_by  TEXT NOT NULL,
+  created_at  TEXT NOT NULL,
+  revoked_at  TEXT               -- NULL = active
+);
 `)
 	if err != nil { return err }
 	return nil

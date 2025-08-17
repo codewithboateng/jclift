@@ -322,3 +322,18 @@ clean: ## Remove build artifacts (keep DB/reports)
 realclean: ## Remove build, DB, and reports
 	@rm -rf dist $(DB) $(REPORTS)
 # ---------------------------------------------------------------------------
+
+# --- Waiver helpers (authenticated; use cookie jar) --------------------------
+.PHONY: waivers-list waiver-create waiver-revoke
+waivers-list: ## List waivers (make waivers-list [ACTIVE=1])
+	@curl -s -b $(COOKIE) '$(API)/api/v1/waivers?active=$(if $(ACTIVE),$(ACTIVE),1)' | jq .
+
+waiver-create: ## Create waiver: RULE=<id> [JOB=payroll STEP=S1 PAT=substring REASON=... UNTIL=2025-12-31T00:00:00Z]
+	@test -n "$(RULE)" && test -n "$(REASON)" && test -n "$(UNTIL)" || { echo "Usage: make waiver-create RULE=<rule_id> REASON=... UNTIL=<RFC3339> [JOB=.. STEP=.. PAT=..]"; exit 2; }
+	@jq -n --arg rule "$(RULE)" --arg job "$(JOB)" --arg step "$(STEP)" --arg pat "$(PAT)" --arg reason "$(REASON)" --arg until "$(UNTIL)" \
+	  '{rule_id:$$rule, job:$$job, step:$$step, pattern_sub:$$pat, reason:$$reason, expires_at:$$until}' \
+	| curl -s -b $(COOKIE) -H 'Content-Type: application/json' -d @- '$(API)/api/v1/waivers' | jq .
+
+waiver-revoke: ## Revoke waiver: make waiver-revoke ID=1
+	@test -n "$(ID)" || { echo "Usage: make waiver-revoke ID=<waiver_id>"; exit 2; }
+	@curl -s -b $(COOKIE) -X POST '$(API)/api/v1/waivers/$(ID)/revoke' | jq .

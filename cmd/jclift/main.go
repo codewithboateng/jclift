@@ -158,12 +158,25 @@ func analyzeCmd(args []string) {
 	run.Findings = rules.Evaluate(&run)
 
 	// Persist & report
+	// Persist & report (open DB earlier so we can load waivers)
 	db, err := storage.OpenSQLite(*dbPath)
 	if err != nil { slog.Error("db open error", "err", err); os.Exit(1) }
 	defer db.Close()
 	if err := db.CreateSchema(); err != nil { slog.Error("db schema error", "err", err); os.Exit(1) }
+
+	// Apply waivers (active only)
+	waivers, err := db.ListWaivers(true)
+	if err != nil { slog.Warn("waiver list error", "err", err) }
+	if len(waivers) > 0 {
+		kept, waived := rules.ApplyWaivers(run.Findings, waivers)
+		run.Findings = kept
+		slog.Info("waivers applied", "waived", waived, "remaining", len(run.Findings))
+	}
+
+	// Save run
 	if err := db.SaveRun(&run); err != nil { slog.Error("db save run error", "err", err); os.Exit(1) }
 
+	// Reports
 	jsonPath, _ := reporting.WriteJSON(run.ID, *outDir, &run)
 	htmlPath, _ := reporting.WriteHTML(run.ID, *outDir, &run)
 
@@ -171,6 +184,7 @@ func analyzeCmd(args []string) {
 	fmt.Printf("Analyze OK\n  Run: %s\n  JSON: %s\n  HTML: %s\n  DB: %s\n", run.ID, jsonPath, htmlPath, filepath.Clean(*dbPath))
 
 	if *failOn && len(run.Findings) > 0 { os.Exit(3) }
+
 }
 
 func reportCmd(args []string) {
