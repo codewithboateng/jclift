@@ -9,29 +9,45 @@ import (
 	"time"
 
 	"github.com/codewithboateng/jclift/internal/ir"
+	"github.com/codewithboateng/jclift/internal/rules"
 	"github.com/codewithboateng/jclift/internal/storage"
 )
 
 // Store is the minimal contract the API needs.
-// Your concrete storage type just has to implement these.
 type Store interface {
 	ListRuns(limit, offset int) ([]storage.RunRow, error)
 	LoadRun(id string) (ir.Run, error)
 	ListFindings(runID, minSeverity string) ([]ir.Finding, error)
 }
 
-type Server struct {
-	DB     Store
-	Logger *slog.Logger
+// UserStore is the auth/audit contract the API uses.
+type UserStore interface {
+	GetUserByUsername(string) (storage.User, string, error)
+	CreateSession(int64, string, time.Time) error
+	GetSession(string) (storage.User, error)
+	DeleteSession(string) error
+	LogAudit(username, action, resource string, meta map[string]any) error
 }
+
+type Server struct {
+	DB              Store
+	UserStore       UserStore       // <-- exported so cmd can set it
+	Logger          *slog.Logger
+	AllowedOrigins  []string
+	SessionDuration time.Duration
+}
+
 
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 
-	// CORS preflight + basic CORS on all routes
 	withCORS := func(h http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
+			origin := s.pickCORSOrigin(r)
+			if origin != "" {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+			}
+			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 			if r.Method == http.MethodOptions {
@@ -43,15 +59,39 @@ func (s *Server) Routes() http.Handler {
 	}
 
 	mux.HandleFunc("GET /api/v1/health", withCORS(s.handleHealth))
-	mux.HandleFunc("GET /api/v1/runs", withCORS(s.handleListRuns))
-	mux.HandleFunc("GET /api/v1/runs/{id}", withCORS(s.handleGetRun))
-	mux.HandleFunc("GET /api/v1/runs/{id}/findings", withCORS(s.handleListFindings))
+	mux.HandleFunc("POST /api/v1/auth/login", withCORS(s.handleLogin))
+	mux.HandleFunc("POST /api/v1/auth/logout", withCORS(s.handleLogout))
+	mux.HandleFunc("GET /api/v1/me", withCORS(withAuth(s, s.handleMe, "me")))
+
+	mux.HandleFunc("GET /api/v1/runs", withCORS(withAuth(s, s.handleListRuns, "runs:list")))
+	mux.HandleFunc("GET /api/v1/runs/latest", withCORS(withAuth(s, s.handleGetLatestRun, "runs:latest")))
+	mux.HandleFunc("GET /api/v1/runs/{id}", withCORS(withAuth(s, s.handleGetRun, "runs:get")))
+	mux.HandleFunc("GET /api/v1/runs/{id}/findings", withCORS(withAuth(s, s.handleListFindings, "findings:list")))
+	mux.HandleFunc("GET /api/v1/rules", withCORS(withAuth(s, s.handleListRules, "rules:list")))
+
 
 	// fallback
 	mux.HandleFunc("/", withCORS(func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 	}))
 	return mux
+}
+
+func (s *Server) pickCORSOrigin(r *http.Request) string {
+	if len(s.AllowedOrigins) == 0 {
+		return ""
+	}
+	origin := r.Header.Get("Origin")
+	for _, ao := range s.AllowedOrigins {
+		if ao == "*" {
+			return "*"
+		}
+		if origin != "" && strings.EqualFold(origin, ao) {
+			return origin
+		}
+	}
+	// Not allowed → return empty (no CORS header)
+	return ""
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -72,9 +112,22 @@ func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"items": rows,
-		"limit": limit, "offset": offset,
+		"items": rows, "limit": limit, "offset": offset,
 	})
+}
+
+func (s *Server) handleGetLatestRun(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.DB.ListRuns(1, 0)
+	if err != nil || len(rows) == 0 {
+		s.err(w, http.StatusNotFound, "no runs")
+		return
+	}
+	run, err := s.DB.LoadRun(rows[0].ID)
+	if err != nil {
+		s.err(w, http.StatusNotFound, "run not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, run)
 }
 
 func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request) {
@@ -101,6 +154,18 @@ func (s *Server) handleListFindings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"run_id": id, "min_severity": min, "items": items,
 	})
+}
+
+func (s *Server) handleListRules(w http.ResponseWriter, r *http.Request) {
+	type rr struct {
+		ID      string `json:"id"`
+		Summary string `json:"summary"`
+	}
+	var out []rr
+	for _, r := range rules.List() {
+		out = append(out, rr{ID: r.ID, Summary: r.Summary})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": out})
 }
 
 func (s *Server) err(w http.ResponseWriter, code int, msg string) {

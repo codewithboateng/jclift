@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"net/http"
+
 	"github.com/codewithboateng/jclift/internal/api"
+	"github.com/codewithboateng/jclift/internal/security"
 
 	"github.com/codewithboateng/jclift/internal/cost"
 	"github.com/codewithboateng/jclift/internal/ir"
@@ -20,7 +22,6 @@ import (
 	"github.com/codewithboateng/jclift/internal/rulesdsl"
 	"github.com/codewithboateng/jclift/internal/shared"
 	"github.com/codewithboateng/jclift/internal/storage"
-
 )
 
 func main() {
@@ -29,6 +30,8 @@ func main() {
 		os.Exit(2)
 	}
 	switch os.Args[1] {
+	case "admin":
+		adminCmd(os.Args[2:])
 	case "serve":
 		serveCmd(os.Args[2:])
 	case "analyze":
@@ -265,6 +268,7 @@ func serveCmd(args []string) {
 	configPath := fs.String("config", "", "Path to YAML config (optional)")
 	dbPath := fs.String("db", "", "SQLite database path")
 	listen := fs.String("listen", ":8080", "Listen address (e.g. :8080)")
+	corsAllow := fs.String("cors-allow", "*", "Comma-separated allowed origins (use * for any)")
 	_ = fs.Parse(args)
 
 	// Config + logger
@@ -282,11 +286,61 @@ func serveCmd(args []string) {
 	}
 	defer db.Close()
 
+	// Parse allowed origins
+	var allowed []string
+	for _, p := range strings.Split(*corsAllow, ",") {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			allowed = append(allowed, p)
+		}
+	}
+	if len(allowed) == 0 {
+		allowed = []string{"*"}
+	}
+
 	// Start server
-	s := &api.Server{DB: db, Logger: logger}
-	slog.Info("api listening", "addr", *listen)
+	s := &api.Server{
+	DB: db,
+	UserStore: db,                   // <-- set it now that it's exported
+	Logger: logger,
+	AllowedOrigins: allowed,
+	SessionDuration: 24 * time.Hour,
+}
+	
+	slog.Info("api listening", "addr", *listen, "cors_allow", strings.Join(allowed, ","))
 	if err := http.ListenAndServe(*listen, s.Routes()); err != nil {
 		slog.Error("api serve error", "err", err)
 		os.Exit(1)
 	}
+}
+
+func adminCmd(args []string) {
+	fs := flag.NewFlagSet("admin", flag.ExitOnError)
+	sub := fs.String("cmd", "", "Command: create-user")
+	username := fs.String("username", "", "Username")
+	password := fs.String("password", "", "Password")
+	role := fs.String("role", "admin", "Role (admin|viewer)")
+	dbPath := fs.String("db", "./jclift.db", "SQLite database path")
+	_ = fs.Parse(args)
+
+	if *sub != "create-user" {
+		fmt.Fprintln(os.Stderr, "admin: --cmd create-user required")
+		os.Exit(2)
+	}
+	if *username == "" || *password == "" {
+		fmt.Fprintln(os.Stderr, "admin: --username and --password are required")
+		os.Exit(2)
+	}
+
+	db, err := storage.OpenSQLite(*dbPath)
+	if err != nil { slog.Error("db open error", "err", err); os.Exit(1) }
+	defer db.Close()
+	if err := db.CreateSchema(); err != nil { slog.Error("schema", "err", err); os.Exit(1) }
+
+	hash, err := security.HashPassword(*password)
+	if err != nil { slog.Error("hash", "err", err); os.Exit(1) }
+
+	id, err := db.CreateUser(*username, hash, *role)
+	if err != nil { slog.Error("create user", "err", err); os.Exit(1) }
+	fmt.Printf("User created id=%d username=%s role=%s\n", id, *username, *role)
 }

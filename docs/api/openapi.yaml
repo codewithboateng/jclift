@@ -48,3 +48,17 @@ paths:
           schema: { type: string, enum: [LOW, MEDIUM, HIGH], default: LOW }
       responses:
         "200": { description: Findings }
+
+  /api/v1/runs/latest:
+    get:
+      summary: Get the most recent run
+      responses:
+        '200': { description: Run payload }
+        '404': { description: No runs }
+
+  /api/v1/rules:
+    get:
+      summary: List registered rules (IDs + summaries)
+      responses:
+        '200': { description: Rule list }
+

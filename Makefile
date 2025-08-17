@@ -2,6 +2,7 @@
 SHELL := /bin/sh
 .ONESHELL:
 
+# --- Tooling & paths ---------------------------------------------------------
 GO        ?= go
 BIN       ?= dist/jclift
 CFG       ?= ./configs/jclift.yaml
@@ -10,12 +11,11 @@ REPORTS   ?= ./reports
 DB        ?= ./jclift.db
 OPEN_CMD  ?= $(shell command -v open 2>/dev/null || command -v xdg-open 2>/dev/null || echo "cat")
 
-# Variables you can override per-invocation:
+# --- Analysis flags (overridable) -------------------------------------------
 SEVERITY  ?= LOW            # LOW|MEDIUM|HIGH
 DISABLE   ?=                # e.g. "DD-DUPLICATE-DATASET,DD-DISP-OLD-SERIALIZATION"
 MIPS_USD  ?=                # overrides config if set (e.g., 250)
 
-# Derived flags
 ANALYZE_FLAGS := --config $(CFG)
 ifneq ($(strip $(SEVERITY)),)
 ANALYZE_FLAGS += --severity-threshold $(SEVERITY)
@@ -27,16 +27,35 @@ ifneq ($(strip $(MIPS_USD)),)
 ANALYZE_FLAGS += --mips-usd $(MIPS_USD)
 endif
 
-.PHONY: help bootstrap tidy fmt vet lint build analyze analyze-low analyze-med analyze-high \
-        analyze-disable analyze-ci smoke last-id last-two report-last diff-last \
-        db-summary db-top clean realclean open-last seed-sample
+# --- API/Serve helpers -------------------------------------------------------
+API        ?= http://localhost:8080   # Where `serve` listens
+LISTEN     ?= :8080                   # CLI listen addr
+CORS_ALLOW ?= *                       # CSV origins or '*'
+COOKIE     ?= .cookies
+USER       ?= admin
+PASS       ?= secret
 
+# --- Phonies -----------------------------------------------------------------
+.PHONY: help deps bootstrap tidy fmt vet lint build \
+        analyze analyze-low analyze-med analyze-high analyze-disable analyze-ci \
+        smoke last-id last-two report-last diff-last db-summary open-last \
+        seed-sample test-rules ci-smoke test fuzz bench test-golden update-golden golden-diff \
+        docker-build docker-run docker-clean ci-local pkg-airgap \
+        analyze-dsl serve api-health api-runs api-latest api-findings api-rules \
+        login-jar me-auth runs-auth findings-auth create-admin
+
+# --- Help --------------------------------------------------------------------
 help: ## Show this help
-	@awk 'BEGIN{FS=":.*##"; printf "\nTargets:\n"} /^[a-zA-Z0-9_-]+:.*##/{printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN{FS=":.*##"; printf "\nTargets:\n"} /^[a-zA-Z0-9_.-]+:.*##/{printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-bootstrap: ## One-time: tidy deps
+# --- Deps & hygiene ----------------------------------------------------------
+deps: ## Get module deps (SQLite driver, crypto) + tidy
+	@$(GO) get modernc.org/sqlite@latest golang.org/x/crypto@latest
+	@$(GO) mod tidy
+
+bootstrap: deps ## One-time bootstrap: deps + tidy
 	@echo "==> Bootstrapping..."
-	$(GO) mod tidy
+	@$(GO) mod tidy
 
 tidy: ## go mod tidy
 	$(GO) mod tidy
@@ -51,11 +70,13 @@ vet: ## go vet
 
 lint: fmt vet ## quick lint (fmt + vet)
 
+# --- Build -------------------------------------------------------------------
 build: ## Build CLI to dist/
 	@echo "==> Building $(BIN)"
 	@mkdir -p dist
 	$(GO) build -o $(BIN) ./cmd/jclift
 
+# --- Analyze & reports -------------------------------------------------------
 analyze: build ## Analyze using config + current flags (SEVERITY, DISABLE, MIPS_USD)
 	@echo "==> Analyze ($(SEVERITY))"
 	$(BIN) analyze --path $(SAMPLES) --out $(REPORTS) $(ANALYZE_FLAGS)
@@ -69,7 +90,7 @@ analyze-med: ## Shortcut: SEVERITY=MEDIUM
 analyze-high: ## Shortcut: SEVERITY=HIGH
 	@$(MAKE) analyze SEVERITY=HIGH
 
-analyze-disable: ## Example: disable two rules
+analyze-disable: ## Example: disable two rules (set DISABLE var)
 	@$(MAKE) analyze DISABLE="DD-DUPLICATE-DATASET,DD-DISP-OLD-SERIALIZATION"
 
 analyze-ci: build ## CI gate (fails if any findings after gating)
@@ -77,7 +98,8 @@ analyze-ci: build ## CI gate (fails if any findings after gating)
 	-$(BIN) analyze --path $(SAMPLES) --out $(REPORTS) $(ANALYZE_FLAGS) --fail-on-findings
 	@rc=$$?; if [ "$$rc" -eq 0 ]; then echo "No findings (gate passed)"; else echo "Findings present (gate failed) rc=$$rc"; fi
 
-smoke: ## Build + analyze (LOW) + DB summary + open report
+# --- Convenience: smoke + open report ---------------------------------------
+smoke: ## Build + analyze (LOW) + DB summary + open last HTML
 	@$(MAKE) build
 	@$(MAKE) analyze-low
 	@$(MAKE) db-summary
@@ -116,7 +138,8 @@ open-last: ## Open last HTML report (macOS 'open' or Linux 'xdg-open'; else cat)
 	@html=$$(ls -t $(REPORTS)/run-*.html 2>/dev/null | head -1); \
 	if [ -n "$$html" ]; then echo "==> Opening $$html"; $(OPEN_CMD) "$$html"; else echo "No reports yet"; fi
 
-seed-sample: ## Recreate the demo JCL sample (robust, no heredoc)
+# --- Samples -----------------------------------------------------------------
+seed-sample: ## Recreate the demo JCL sample (portable; no heredoc)
 	@mkdir -p $(SAMPLES)
 	@printf '%s\n' \
 	'//PAYROLL  JOB (12345),'\''DEMO RUN'\'',CLASS=A,MSGCLASS=X,NOTIFY=&SYSUID' \
@@ -136,17 +159,7 @@ seed-sample: ## Recreate the demo JCL sample (robust, no heredoc)
 	> $(SAMPLES)/payroll.jcl
 	@echo "Seeded $(SAMPLES)/payroll.jcl"
 
-
-
-clean: ## Remove build artifacts (keep DB/reports)
-	@rm -rf dist
-
-realclean: ## Remove build, DB, and reports
-	@rm -rf dist $(DB) $(REPORTS)
-# ---------------------------------------------------------------------------
-
-.PHONY: test-rules
-test-rules: build ## Create a rules sampler job that triggers remaining rules, then analyze
+test-rules: build ## Create a rules sampler job to hit many rules, then analyze
 	@mkdir -p $(SAMPLES)
 	@printf '%s\n' \
 	'//RULES    JOB (12345),'\''RULES'\'',CLASS=A,MSGCLASS=X,NOTIFY=&SYSUID' \
@@ -179,7 +192,7 @@ test-rules: build ## Create a rules sampler job that triggers remaining rules, t
 	@$(MAKE) db-summary
 	@$(MAKE) open-last || true
 
-.PHONY: ci-smoke
+# --- CI-style smoke across thresholds ---------------------------------------
 ci-smoke: build ## Run LOW→MEDIUM→HIGH passes and print rule counts for each
 	@for sev in LOW MEDIUM HIGH; do \
 	  echo ""; echo "==> CI Smoke ($$sev)"; \
@@ -200,33 +213,29 @@ ci-smoke: build ## Run LOW→MEDIUM→HIGH passes and print rule counts for each
 	  fi; \
 	done
 
-.PHONY: test fuzz bench
+# --- go test suite & benchmarks ---------------------------------------------
 test: ## Run unit tests (including golden-ish checks)
 	@echo "==> go test"
-	@go test ./test/... -count=1
+	@$(GO) test ./test/... -count=1
 
 fuzz: ## Run parser fuzz for a short time (requires Go 1.18+)
 	@echo "==> go fuzz (parser)"
-	@go test ./test/fuzz -run=Fuzz -fuzz=Fuzz -fuzztime=5s
+	@$(GO) test ./test/fuzz -run=Fuzz -fuzz=Fuzz -fuzztime=5s
 
 bench: ## Run micro-benchmarks
 	@echo "==> go bench"
-	@go test ./test/perf -bench=Analyze -benchtime=2s -run=^$
+	@$(GO) test ./test/perf -bench=Analyze -benchtime=2s -run=^$
 
-
-.PHONY: test-golden update-golden golden-diff
 test-golden: ## Validate golden snapshot
-	@go test ./test/golden -run TestGolden_PayrollSnapshot -count=1
+	@$(GO) test ./test/golden -run TestGolden_PayrollSnapshot -count=1
 
 update-golden: ## Re-write golden snapshot from current analyzer
-	@go test ./test/golden -run TestGolden_PayrollSnapshot -count=1 -args -update
+	@$(GO) test ./test/golden -run TestGolden_PayrollSnapshot -count=1 -args -update
 
-golden-diff: ## Show diff between current output and golden (requires update-golden first)
-	@go test ./test/golden -run TestGolden_PayrollSnapshot -count=1 || true
+golden-diff: ## Show diff between current output and golden
+	@$(GO) test ./test/golden -run TestGolden_PayrollSnapshot -count=1 || true
 
-
-.PHONY: docker-build docker-run docker-clean ci-local pkg-airgap
-
+# --- Docker helpers ----------------------------------------------------------
 docker-build: ## Build Docker image jclift/core:dev
 	@docker build -f packaging/docker/Dockerfile.core -t jclift/core:dev .
 
@@ -244,12 +253,12 @@ docker-clean: ## Remove local image
 
 ci-local: ## Quick local CI: tidy, vet, build, tests, fuzz(5s)
 	@echo "==> Local CI"
-	@go mod tidy
-	@go vet ./...
+	@$(GO) mod tidy
+	@$(GO) vet ./...
 	@mkdir -p dist
-	@go build -trimpath -ldflags="-s -w" -o dist/jclift ./cmd/jclift
-	@go test ./... -count=1
-	@go test ./test/fuzz -run=Fuzz -fuzz=Fuzz -fuzztime=5s
+	@$(GO) build -trimpath -ldflags="-s -w" -o dist/jclift ./cmd/jclift
+	@$(GO) test ./... -count=1
+	@$(GO) test ./test/fuzz -run=Fuzz -fuzz=Fuzz -fuzztime=5s
 
 pkg-airgap: build ## Create a tarball with binary + configs + sample
 	@mkdir -p dist/pkg
@@ -260,12 +269,56 @@ pkg-airgap: build ## Create a tarball with binary + configs + sample
 	@tar -C dist -czf dist/jclift-airgap.tgz pkg
 	@echo "Wrote dist/jclift-airgap.tgz"
 
-.PHONY: analyze-dsl
+# --- DSL rule packs ----------------------------------------------------------
 analyze-dsl: build ## Analyze using a DSL rules pack: make analyze-dsl PACK=configs/rules.example.yaml
 	@test -n "$(PACK)" || { echo "Usage: make analyze-dsl PACK=path/to/rules.yaml"; exit 2; }
-	$(BIN) analyze --path $(SAMPLES) --out $(REPORTS) --config $(CFG) --rules-pack $(PACK)
+	@$(BIN) analyze --path $(SAMPLES) --out $(REPORTS) --config $(CFG) --rules-pack $(PACK)
 
-.PHONY: serve
-serve: build ## Run REST API server (default :8080)
-	@./dist/jclift serve --db $(DB)
+# --- API server & endpoints --------------------------------------------------
+serve: build ## Run REST API server (Ctrl+C to stop)
+	@./dist/jclift serve --db $(DB) --listen $(LISTEN) --cors-allow "$(CORS_ALLOW)"
 
+api-health: ## Hit /health (server must be running)
+	@curl -s "$(API)/api/v1/health" | jq .
+
+api-runs: ## List recent runs (limit=5)
+	@curl -s "$(API)/api/v1/runs?limit=5" | jq .
+
+api-latest: ## Fetch the most recent run payload
+	@curl -s "$(API)/api/v1/runs/latest" | jq .
+
+api-findings: ## Findings for a run: make api-findings RUN=<run-id> [MIN=MEDIUM]
+	@test -n "$(RUN)" || { echo "Usage: make api-findings RUN=<run-id> [MIN=MEDIUM]"; exit 2; }
+	@curl -s "$(API)/api/v1/runs/$(RUN)/findings?min_severity=$(if $(MIN),$(MIN),LOW)" | jq .
+
+api-rules: ## List registered rules (IDs + summaries)
+	@curl -s "$(API)/api/v1/rules" | jq .
+
+# --- Auth helpers (cookie jar) ----------------------------------------------
+create-admin: build ## Create local user: make create-admin USER=admin PASS=secret [ROLE=admin|viewer]
+	@test -n "$(USER)" && test -n "$(PASS)" || { echo "Usage: make create-admin USER=... PASS=... [ROLE=admin|viewer]"; exit 2; }
+	@./dist/jclift admin --cmd create-user \
+	  --username "$(USER)" --password "$(PASS)" --role "$(if $(ROLE),$(ROLE),admin)" --db $(DB)
+
+login-jar: ## Login and save cookie jar to $(COOKIE)
+	@curl -s -c $(COOKIE) -X POST '$(API)/api/v1/auth/login' \
+	  -H 'Content-Type: application/json' \
+	  -d '{"username":"$(USER)","password":"$(PASS)"}' | jq .
+
+me-auth: ## Who am I (requires cookie jar)
+	@curl -s -b $(COOKIE) '$(API)/api/v1/me' | jq .
+
+runs-auth: ## Authenticated /runs (requires cookie jar)
+	@curl -s -b $(COOKIE) '$(API)/api/v1/runs?limit=5' | jq .
+
+findings-auth: ## Authenticated findings: make findings-auth RUN=<run-id> [MIN=LOW|MEDIUM|HIGH]
+	@test -n "$(RUN)" || { echo "Usage: make findings-auth RUN=<run-id> [MIN=LOW|MEDIUM|HIGH]"; exit 2; }
+	@curl -s -b $(COOKIE) '$(API)/api/v1/runs/$(RUN)/findings?min_severity=$(if $(MIN),$(MIN),LOW)' | jq .
+
+# --- Cleanup -----------------------------------------------------------------
+clean: ## Remove build artifacts (keep DB/reports)
+	@rm -rf dist
+
+realclean: ## Remove build, DB, and reports
+	@rm -rf dist $(DB) $(REPORTS)
+# ---------------------------------------------------------------------------
