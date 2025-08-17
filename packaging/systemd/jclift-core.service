@@ -1,0 +1,19 @@
+[Unit]
+Description=jclift core analyzer
+After=network.target
+
+[Service]
+Type=simple
+User=%i
+Group=%i
+WorkingDirectory=/opt/jclift
+ExecStart=/opt/jclift/jclift analyze --config /opt/jclift/configs/jclift.yaml --path /opt/jclift/samples --out /opt/jclift/reports
+Restart=on-failure
+RestartSec=3s
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

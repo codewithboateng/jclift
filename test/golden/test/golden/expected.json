@@ -1,0 +1,128 @@
+{
+  "id": "run-golden",
+  "started_at": "",
+  "source": "samples/bank-small",
+  "ir_version": "1.0",
+  "context": {
+    "mips_to_usd": 250,
+    "rule_severity_threshold": "LOW",
+    "geometry": {
+      "tracks_per_cyl": 15,
+      "bytes_per_track": 56664
+    },
+    "model": {
+      "mips_per_cpu": 1,
+      "sort_alpha": 0.3,
+      "sort_beta": 0.001,
+      "copy_alpha": 0.1,
+      "copy_beta": 0.0005,
+      "idcams_alpha": 0.15,
+      "idcams_beta": 0.0006
+    }
+  },
+  "jobs": [
+    {
+      "name": "payroll",
+      "steps": [
+        {
+          "name": "S1",
+          "program": "SORT",
+          "ordinal": 1,
+          "annotations": {
+            "cost": {
+              "cpu_seconds": 13.711474967679738,
+              "mips": 13.711474967679738,
+              "usd": 3427.8687419199346
+            },
+            "size_mb": 1296.93603515625
+          }
+        },
+        {
+          "name": "S2",
+          "program": "IEBGENER",
+          "ordinal": 2,
+          "annotations": {
+            "cost": {
+              "cpu_seconds": 0.1005,
+              "mips": 0.1005,
+              "usd": 25.125
+            },
+            "size_mb": 1
+          }
+        }
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "rule_id": "SORT-IDENTITY",
+      "type": "COST",
+      "severity": "MEDIUM",
+      "job": "payroll",
+      "step": "S1",
+      "message": "SORT appears to perform an identity copy (no effective key). Consider removing or merging upstream.",
+      "savings_mips": 13.711474967679738,
+      "savings_usd": 3427.8687419199346
+    },
+    {
+      "rule_id": "DD-DISP-OLD-SERIALIZATION",
+      "type": "RISK",
+      "severity": "LOW",
+      "job": "payroll",
+      "step": "S2",
+      "message": "DD uses DISP=OLD which enforces exclusive access; consider DISP=SHR if safe to improve concurrency."
+    },
+    {
+      "rule_id": "DD-DISP-OLD-SERIALIZATION",
+      "type": "RISK",
+      "severity": "LOW",
+      "job": "payroll",
+      "step": "S2",
+      "message": "DD uses DISP=OLD which enforces exclusive access; consider DISP=SHR if safe to improve concurrency."
+    },
+    {
+      "rule_id": "DD-DISP-OLD-SERIALIZATION",
+      "type": "RISK",
+      "severity": "LOW",
+      "job": "payroll",
+      "step": "S2",
+      "message": "DD uses DISP=OLD which enforces exclusive access; consider DISP=SHR if safe to improve concurrency."
+    },
+    {
+      "rule_id": "DD-DUPLICATE-DATASET",
+      "type": "RISK",
+      "severity": "LOW",
+      "job": "payroll",
+      "step": "S2",
+      "message": "Same dataset referenced multiple times within the step; verify necessity to avoid serialization or confusion."
+    },
+    {
+      "rule_id": "DD-NEW-MISSING-SPACE",
+      "type": "RISK",
+      "severity": "LOW",
+      "job": "payroll",
+      "step": "S2",
+      "message": "DD allocates NEW dataset without SPACE=…; verify SMS defaults or specify SPACE to avoid abends/waste."
+    },
+    {
+      "rule_id": "IEBGENER-REDUNDANT-COPY",
+      "type": "COST",
+      "severity": "LOW",
+      "job": "payroll",
+      "step": "S2",
+      "message": "IEBGENER appears to copy the full dataset without filtering; consider inlining or eliminating redundant copies.",
+      "savings_mips": 0.1005,
+      "savings_usd": 25.125
+    },
+    {
+      "rule_id": "SORT-SORTWK-OVERSIZED",
+      "type": "COST",
+      "severity": "LOW",
+      "job": "payroll",
+      "step": "S1",
+      "message": "SORTWK primary cylinders exceed recommended thresholds; potential I/O/CPU waste.",
+      "savings_mips": 1.6,
+      "savings_usd": 400
+    }
+  ]
+}

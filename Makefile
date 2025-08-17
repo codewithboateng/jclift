@@ -212,3 +212,50 @@ fuzz: ## Run parser fuzz for a short time (requires Go 1.18+)
 bench: ## Run micro-benchmarks
 	@echo "==> go bench"
 	@go test ./test/perf -bench=Analyze -benchtime=2s -run=^$
+
+
+.PHONY: test-golden update-golden golden-diff
+test-golden: ## Validate golden snapshot
+	@go test ./test/golden -run TestGolden_PayrollSnapshot -count=1
+
+update-golden: ## Re-write golden snapshot from current analyzer
+	@go test ./test/golden -run TestGolden_PayrollSnapshot -count=1 -args -update
+
+golden-diff: ## Show diff between current output and golden (requires update-golden first)
+	@go test ./test/golden -run TestGolden_PayrollSnapshot -count=1 || true
+
+
+.PHONY: docker-build docker-run docker-clean ci-local pkg-airgap
+
+docker-build: ## Build Docker image jclift/core:dev
+	@docker build -f packaging/docker/Dockerfile.core -t jclift/core:dev .
+
+docker-run: ## Run analyzer in container using local samples/configs/reports
+	@docker run --rm \
+	  -v $(PWD)/samples:/app/samples:ro \
+	  -v $(PWD)/reports:/app/reports \
+	  -v $(PWD)/configs:/app/configs:ro \
+	  -v $(PWD)/jclift.db:/app/data/jclift.db \
+	  jclift/core:dev \
+	  analyze --path /app/samples --out /app/reports --config /app/configs/jclift.yaml
+
+docker-clean: ## Remove local image
+	-@docker rmi jclift/core:dev 2>/dev/null || true
+
+ci-local: ## Quick local CI: tidy, vet, build, tests, fuzz(5s)
+	@echo "==> Local CI"
+	@go mod tidy
+	@go vet ./...
+	@mkdir -p dist
+	@go build -trimpath -ldflags="-s -w" -o dist/jclift ./cmd/jclift
+	@go test ./... -count=1
+	@go test ./test/fuzz -run=Fuzz -fuzz=Fuzz -fuzztime=5s
+
+pkg-airgap: build ## Create a tarball with binary + configs + sample
+	@mkdir -p dist/pkg
+	@cp -a dist/jclift dist/pkg/
+	@mkdir -p dist/pkg/configs dist/pkg/samples
+	@cp -a configs/jclift.yaml dist/pkg/configs/ 2>/dev/null || true
+	@cp -a samples/* dist/pkg/samples/ 2>/dev/null || true
+	@tar -C dist -czf dist/jclift-airgap.tgz pkg
+	@echo "Wrote dist/jclift-airgap.tgz"

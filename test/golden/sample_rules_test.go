@@ -13,21 +13,6 @@ import (
 	"github.com/codewithboateng/jclift/internal/shared"
 )
 
-const samplePayroll = `//PAYROLL  JOB (12345),'DEMO RUN',CLASS=A,MSGCLASS=X,NOTIFY=&SYSUID
-//S1       EXEC PGM=SORT
-//SYSIN    DD *
-  SORT  FIELDS=COPY
-/*
-//SORTWK01 DD UNIT=SYSDA,SPACE=(CYL,(900,50))
-//SORTWK02 DD UNIT=SYSDA,SPACE=(CYL,(700,50))
-//S2       EXEC PGM=IEBGENER
-//SYSUT1   DD DSN=INPUT.FILE,DISP=SHR
-//SYSUT2   DD DSN=OUTPUT.FILE,DISP=(NEW,CATLG,DELETE)
-//SYSIN    DD DUMMY
-//X1       DD DSN=SHARED.DATA.SET,DISP=OLD
-//X2       DD DSN=SHARED.DATA.SET,DISP=OLD
-//X3       DD DSN=SHARED.DATA.SET,DISP=OLD
-`
 
 func analyzeStrings(t *testing.T, files map[string]string, severity string) ir.Run {
 	t.Helper()

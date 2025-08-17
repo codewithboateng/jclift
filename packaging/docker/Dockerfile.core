@@ -1,0 +1,20 @@
+# --- build stage ---
+FROM golang:1.22 AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+# Build static binary
+ENV CGO_ENABLED=0
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go build -trimpath -ldflags="-s -w" -o /out/jclift ./cmd/jclift
+
+# --- runtime stage ---
+FROM gcr.io/distroless/static:nonroot
+WORKDIR /app
+COPY --from=build /out/jclift /app/jclift
+# Default directories (mount over these as needed)
+VOLUME ["/app/reports", "/app/samples", "/app/configs", "/app/data"]
+ENTRYPOINT ["/app/jclift"]

@@ -1,0 +1,18 @@
+services:
+  core:
+    build:
+      context: ../..
+      dockerfile: packaging/docker/Dockerfile.core
+    image: jclift/core:dev
+    command: >
+      analyze --path /app/samples
+              --out  /app/reports
+              --config /app/configs/jclift.yaml
+    volumes:
+      - ../../samples:/app/samples:ro
+      - ../../reports:/app/reports
+      - ../../configs:/app/configs:ro
+      - ../../jclift.db:/app/data/jclift.db
+    environment:
+      - TZ=UTC
+    restart: "no"

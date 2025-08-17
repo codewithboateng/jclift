@@ -1,0 +1,52 @@
+name: jclift CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+          cache: true
+
+      - name: Go env
+        run: go env
+
+      - name: Tidy
+        run: go mod tidy
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: |
+          mkdir -p dist
+          go build -trimpath -ldflags="-s -w" -o dist/jclift ./cmd/jclift
+
+      - name: Unit tests (incl. golden)
+        run: go test ./test/golden -count=1
+
+      - name: All tests
+        run: go test ./... -count=1
+
+      - name: Parser fuzz (smoke, 5s)
+        run: go test ./test/fuzz -run=Fuzz -fuzz=Fuzz -fuzztime=5s
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: jclift-linux-amd64
+          path: dist/jclift
+          if-no-files-found: error
