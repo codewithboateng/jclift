@@ -7,8 +7,8 @@ import (
 	"github.com/codewithboateng/jclift/internal/ir"
 )
 
-var reRepro = regexp.MustCompile(`(?i)\bREPRO\b`)
-var reSelect = regexp.MustCompile(`(?i)\b(INCLUDE|EXCLUDE|FROMKEY|TOKEY|KEYS)\b`)
+var reRepro    = regexp.MustCompile(`(?i)\bREPRO\b`)
+var reSelect   = regexp.MustCompile(`(?i)\b(INCLUDE|EXCLUDE|FROMKEY|TOKEY|KEYS)\b`)
 var reHasFiles = regexp.MustCompile(`(?i)\b(INFILE|OUTFILE|INDATASET|OUTDATASET)\b`)
 
 func init() {
@@ -34,6 +34,10 @@ func evalIDCAMSReproIdentity(job *ir.Job) []ir.Finding {
 		}
 		u := strings.ToUpper(sysin)
 		if reRepro.MatchString(u) && reHasFiles.MatchString(u) && !reSelect.MatchString(u) {
+			savings := st.Annotations.Cost.MIPS
+			if savings <= 0 {
+				savings = 0.5 // conservative fallback if cost couldn’t be computed
+			}
 			out = append(out, ir.Finding{
 				RuleID:      "IDCAMS-REPRO-IDENTITY",
 				Type:        "COST",
@@ -42,7 +46,7 @@ func evalIDCAMSReproIdentity(job *ir.Job) []ir.Finding {
 				Step:        st.Name,
 				Message:     "IDCAMS REPRO without selection clauses; consider eliminating or consolidating redundant copies.",
 				Evidence:    "SYSIN REPRO with IN/OUT and no INCLUDE/EXCLUDE/KEYS.",
-				SavingsMIPS: 0.5, // placeholder heuristic
+				SavingsMIPS: savings, // USD filled in Evaluate()
 			})
 		}
 	}

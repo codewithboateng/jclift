@@ -18,3 +18,18 @@ rules:
   disable: [] # e.g. ["DD-DUPLICATE-DATASET"]
   sortwk:
     primary_cyl_threshold: 500 # tune per site
+cost:
+  geometry:
+    tracks_per_cyl: 15
+    bytes_per_track: 56664
+  model:
+    mips_per_cpu: 1.0
+    sort:
+      alpha: 0.3
+      beta: 0.001
+    copy:
+      alpha: 0.10
+      beta: 0.0005
+    idcams:
+      alpha: 0.15
+      beta: 0.0006

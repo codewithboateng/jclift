@@ -17,33 +17,38 @@ func init() {
 func evalIEBGENERRedundant(job *ir.Job) []ir.Finding {
 	var out []ir.Finding
 	for _, st := range job.Steps {
-		if strings.EqualFold(st.Program, "IEBGENER") {
-			// Heuristic: if SYSIN DUMMY or empty (full copy)
-			sysin := ""
-			haveIn, haveOut := false, false
-			for _, dd := range st.DD {
-				n := strings.ToUpper(dd.DDName)
-				if n == "SYSIN" {
-					sysin = strings.TrimSpace(strings.ToUpper(dd.Content))
-				}
-				if n == "SYSUT1" {
-					haveIn = true
-				}
-				if n == "SYSUT2" {
-					haveOut = true
-				}
+		if !strings.EqualFold(st.Program, "IEBGENER") {
+			continue
+		}
+		var (
+			sysin          string
+			haveIn, haveOut bool
+		)
+		for _, dd := range st.DD {
+			switch {
+			case strings.EqualFold(dd.DDName, "SYSIN"):
+				sysin = strings.TrimSpace(dd.Content)
+			case strings.EqualFold(dd.DDName, "SYSUT1"):
+				haveIn = true
+			case strings.EqualFold(dd.DDName, "SYSUT2"):
+				haveOut = true
 			}
-			if (sysin == "" || sysin == "DUMMY") && haveIn && haveOut {
-				out = append(out, ir.Finding{
-					RuleID:      "IEBGENER-REDUNDANT-COPY",
-					Type:        "COST",
-					Severity:    "LOW",
-					Step:        st.Name,
-					Message:     "IEBGENER appears to copy the full dataset without filtering; consider inlining or eliminating redundant copies.",
-					Evidence:    "SYSIN=DUMMY or empty; SYSUT1→SYSUT2 full copy.",
-					SavingsMIPS: 0.5, // placeholder; refined by cost model later
-				})
+		}
+		if (sysin == "" || strings.EqualFold(sysin, "DUMMY")) && haveIn && haveOut {
+			savings := st.Annotations.Cost.MIPS
+			if savings <= 0 {
+				savings = 0.5 // safe fallback if cost wasn’t computed
 			}
+			out = append(out, ir.Finding{
+				RuleID:      "IEBGENER-REDUNDANT-COPY",
+				Type:        "COST",
+				Severity:    "LOW",
+				Job:         job.Name,
+				Step:        st.Name,
+				Message:     "IEBGENER appears to copy the full dataset without filtering; consider inlining or eliminating redundant copies.",
+				Evidence:    "SYSIN=DUMMY or empty; SYSUT1→SYSUT2 full copy.",
+				SavingsMIPS: savings, // USD auto-filled by rules.Evaluate using MIPS→USD
+			})
 		}
 	}
 	return out

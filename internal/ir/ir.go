@@ -14,10 +14,14 @@ type Run struct {
 	Jobs     []Job     `json:"jobs"`
 	Findings []Finding `json:"findings,omitempty"`
 }
+
 type Context struct {
 	MIPSToUSD             float64  `json:"mips_to_usd,omitempty"`
 	RuleSeverityThreshold string   `json:"rule_severity_threshold,omitempty"`
 	DisabledRules         []string `json:"disabled_rules,omitempty"`
+
+	Geometry Geometry  `json:"geometry,omitempty"`
+	Model    CostModel `json:"model,omitempty"`
 }
 
 type Job struct {
@@ -29,12 +33,12 @@ type Job struct {
 }
 
 type Step struct {
-	Name        string `json:"name"`
-	Program     string `json:"program"`
-	Ordinal     int    `json:"ordinal"`
-	DD          []DD   `json:"dd,omitempty"`
-	Conditions  string `json:"conditions,omitempty"`
-	Annotations Anno   `json:"annotations"`
+	Name        string          `json:"name"`
+	Program     string          `json:"program"`
+	Ordinal     int             `json:"ordinal"`
+	DD          []DD            `json:"dd,omitempty"`
+	Conditions  string          `json:"conditions,omitempty"`
+	Annotations StepAnnotations `json:"annotations"`
 }
 
 type DD struct {
@@ -47,8 +51,9 @@ type DD struct {
 	Temp    bool   `json:"temp,omitempty"`
 }
 
-type Anno struct {
-	Cost Cost `json:"cost,omitempty"`
+type StepAnnotations struct {
+	Cost   Cost    `json:"cost"`
+	SizeMB float64 `json:"size_mb,omitempty"`
 }
 
 type Cost struct {
@@ -69,4 +74,19 @@ type Finding struct {
 	SavingsMIPS float64        `json:"savings_mips,omitempty"`
 	SavingsUSD  float64        `json:"savings_usd,omitempty"`
 	Metadata    map[string]any `json:"metadata,omitempty"`
+}
+
+type Geometry struct {
+	TracksPerCyl  int `json:"tracks_per_cyl,omitempty"`
+	BytesPerTrack int `json:"bytes_per_track,omitempty"`
+}
+
+type CostModel struct {
+	MIPSPerCPU float64 `json:"mips_per_cpu,omitempty"`
+	SortAlpha  float64 `json:"sort_alpha,omitempty"`
+	SortBeta   float64 `json:"sort_beta,omitempty"`
+	CopyAlpha  float64 `json:"copy_alpha,omitempty"`
+	CopyBeta   float64 `json:"copy_beta,omitempty"`
+	IDAlpha    float64 `json:"idcams_alpha,omitempty"`
+	IDBeta     float64 `json:"idcams_beta,omitempty"`
 }

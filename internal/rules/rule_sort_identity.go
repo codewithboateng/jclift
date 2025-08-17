@@ -17,31 +17,44 @@ func init() {
 func evalSortIdentity(job *ir.Job) []ir.Finding {
 	var out []ir.Finding
 	for _, st := range job.Steps {
-		// Minimal stub logic until parser is richer
-		if strings.EqualFold(st.Program, "SORT") {
-			// Try to find SYSIN control cards
-			sysin := ""
-			for _, dd := range st.DD {
-				if strings.EqualFold(dd.DDName, "SYSIN") {
-					sysin = dd.Content
-					break
-				}
-			}
-			// Simple heuristics
-			if strings.Contains(strings.ToUpper(sysin), "FIELDS=COPY") ||
-				(strings.TrimSpace(sysin) == "" && len(st.DD) > 0) {
-				out = append(out, ir.Finding{
-					RuleID:   "SORT-IDENTITY",
-					Type:     "COST",
-					Severity: "MEDIUM",
-					Step:     st.Name,
-					Message:  "SORT appears to perform an identity copy (no effective key). Consider removing or merging upstream.",
-					Evidence: snippet(sysin),
-					// A small placeholder savings until cost model/size is known.
-					SavingsMIPS: 1.0,
-				})
+		if !strings.EqualFold(st.Program, "SORT") {
+			continue
+		}
+		// Pull SYSIN control cards (if any)
+		sysin := ""
+		for _, dd := range st.DD {
+			if strings.EqualFold(dd.DDName, "SYSIN") {
+				sysin = dd.Content
+				break
 			}
 		}
+		up := strings.ToUpper(sysin)
+		identity := strings.Contains(up, "FIELDS=COPY") || (strings.TrimSpace(sysin) == "" && len(st.DD) > 0)
+		if !identity {
+			continue
+		}
+
+		// Savings = step cost (MIPS) if available; otherwise a tiny fallback
+		savings := st.Annotations.Cost.MIPS
+		if savings <= 0 {
+			savings = 0.8
+		}
+
+		ev := strings.TrimSpace(sysin)
+		if ev == "" {
+			ev = "(empty SYSIN)"
+		}
+
+		out = append(out, ir.Finding{
+			RuleID:      "SORT-IDENTITY",
+			Type:        "COST",
+			Severity:    "MEDIUM",
+			Job:         job.Name,
+			Step:        st.Name,
+			Message:     "SORT appears to perform an identity copy (no effective key). Consider removing or merging upstream.",
+			Evidence:    snippet(ev),
+			SavingsMIPS: savings, // USD filled by rules.Evaluate using MIPS→USD
+		})
 	}
 	return out
 }

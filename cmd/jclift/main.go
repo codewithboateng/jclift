@@ -51,14 +51,14 @@ Usage:
 
 func analyzeCmd(args []string) {
 	fs := flag.NewFlagSet("analyze", flag.ExitOnError)
-	configPath := fs.String("config", "", "Path to YAML config (optional)")
-	inPath := fs.String("path", "", "Path to input JCL directory")
-	outDir := fs.String("out", "", "Output directory for reports")
-	dbPath := fs.String("db", "", "SQLite database path")
-	mipsUSD := fs.Float64("mips-usd", 0, "USD per MIPS unit (optional)")
-	sevThresh := fs.String("severity-threshold", "", "Minimum severity to report (LOW|MEDIUM|HIGH)")
+	configPath   := fs.String("config", "", "Path to YAML config (optional)")
+	inPath       := fs.String("path", "", "Path to input JCL directory")
+	outDir       := fs.String("out", "", "Output directory for reports")
+	dbPath       := fs.String("db", "", "SQLite database path")
+	mipsUSD      := fs.Float64("mips-usd", 0, "USD per MIPS unit (optional)")
+	sevThresh    := fs.String("severity-threshold", "", "Minimum severity to report (LOW|MEDIUM|HIGH)")
 	rulesDisable := fs.String("rules-disable", "", "Comma-separated rule IDs to disable")
-	failOn := fs.Bool("fail-on-findings", false, "Exit non-zero if any findings remain after threshold/disable")
+	failOn       := fs.Bool("fail-on-findings", false, "Exit non-zero if any findings remain after threshold/disable")
 	_ = fs.Parse(args)
 
 	// Load config + init logger
@@ -79,6 +79,7 @@ func analyzeCmd(args []string) {
 	if *mipsUSD == 0 && cfg.Analysis.MIPSToUSD > 0 {
 		*mipsUSD = cfg.Analysis.MIPSToUSD
 	}
+
 	// Severity threshold + disabled rules
 	sth := cfg.Rules.SeverityThreshold
 	if *sevThresh != "" {
@@ -126,10 +127,23 @@ func analyzeCmd(args []string) {
 		run.Context.DisabledRules = append(run.Context.DisabledRules, id)
 	}
 
-	// Cost annotate
+	// ✅ Inject geometry & model from config into Context (used by cost/size)
+	run.Context.Geometry.TracksPerCyl  = cfg.Cost.Geometry.TracksPerCyl
+	run.Context.Geometry.BytesPerTrack = cfg.Cost.Geometry.BytesPerTrack
+	run.Context.Model.MIPSPerCPU = cfg.Cost.Model.MIPSPerCPU
+	run.Context.Model.SortAlpha  = cfg.Cost.Model.Sort.Alpha
+	run.Context.Model.SortBeta   = cfg.Cost.Model.Sort.Beta
+	run.Context.Model.CopyAlpha  = cfg.Cost.Model.Copy.Alpha
+	run.Context.Model.CopyBeta   = cfg.Cost.Model.Copy.Beta
+	run.Context.Model.IDAlpha    = cfg.Cost.Model.IDCAMS.Alpha
+	run.Context.Model.IDBeta     = cfg.Cost.Model.IDCAMS.Beta
+
+	// Cost annotate (now also attach SizeMB)
 	for i := range run.Jobs {
 		for j := range run.Jobs[i].Steps {
+			size := cost.EstimateSizeMB(&run.Jobs[i].Steps[j], run.Context.Geometry)
 			c := cost.Estimate(&run.Jobs[i].Steps[j], run.Context)
+			run.Jobs[i].Steps[j].Annotations.SizeMB = size
 			run.Jobs[i].Steps[j].Annotations.Cost = c
 		}
 	}
