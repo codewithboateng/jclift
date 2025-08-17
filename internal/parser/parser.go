@@ -89,10 +89,13 @@ func parseFile(p string) (ir.Job, error) {
 			}
 			stepName := firstField(card)
 			pgm := parsePGM(card)
+			cond := parseCOND(card)
+
 			cur = &ir.Step{
-				Name:    stepName,
-				Program: strings.ToUpper(pgm),
-				Ordinal: len(steps) + 1,
+				Name:       stepName,
+				Program:    strings.ToUpper(pgm),
+				Ordinal:    len(steps) + 1,
+				Conditions: cond,
 			}
 			continue
 		}
@@ -144,7 +147,7 @@ func parseFile(p string) (ir.Job, error) {
 					dd.DISP = strings.TrimSpace(val[:end])
 				}
 			}
-			// SPACE= (just capture raw text for now)
+			// SPACE= (raw capture for now)
 			if i := strings.Index(upper, "SPACE="); i != -1 {
 				val := strings.TrimSpace(rest[i+6:])
 				end := indexAny(val, " ")
@@ -185,6 +188,17 @@ func parsePGM(card string) string {
 		end = len(val)
 	}
 	return strings.Trim(strings.TrimSpace(val[:end]), ",")
+}
+
+func parseCOND(card string) string {
+	u := strings.ToUpper(card)
+	i := strings.Index(u, "COND=")
+	if i == -1 {
+		return ""
+	}
+	rest := card[i+5:]
+	// Capture until end or next blank after a keyword split; simple heuristic
+	return strings.TrimSpace(rest)
 }
 
 func indexAny(s, any string) int {
