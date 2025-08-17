@@ -1,0 +1,14 @@
+database:
+  driver: sqlite
+  dsn: ./jclift.db
+
+analysis:
+  sources: ["./samples/bank-small"]
+  mips_to_usd: 250
+
+reporting:
+  out_dir: ./reports
+
+logging:
+  format: json # or "text"
+  level: info # debug|info|warn|error
