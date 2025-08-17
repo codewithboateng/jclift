@@ -33,8 +33,8 @@ func WriteHTML(runID, outDir string, run *ir.Run) (string, error) {
 	fmt.Fprintf(f, "<h1>jclift report – %s</h1>", html.EscapeString(runID))
 	fmt.Fprintf(f, "<p>Jobs: %d &nbsp; Findings: %d</p>", len(run.Jobs), len(run.Findings))
 	fmt.Fprintf(f, "<p><b>Estimated totals</b>: CPU=%.1fs &nbsp; MIPS=%.1f &nbsp; USD=%.2f <span class='dim'>(heuristic)</span></p>", totalCPU, totalMIPS, totalUSD)
-	 if run.Context.MIPSToUSD > 0 {
-     fmt.Fprintf(f, "<p class='dim'>Rate: 1 MIPS ≈ %.2f USD</p>", run.Context.MIPSToUSD)
+	if run.Context.MIPSToUSD > 0 {
+		fmt.Fprintf(f, "<p class='dim'>Rate: 1 MIPS ≈ %.2f USD</p>", run.Context.MIPSToUSD)
 	}
 	fmt.Fprintf(f, "<p class='dim'>Severity threshold: %s", html.EscapeString(run.Context.RuleSeverityThreshold))
 	if n := len(run.Context.DisabledRules); n > 0 {
@@ -89,7 +89,8 @@ func WriteHTML(runID, outDir string, run *ir.Run) (string, error) {
 			)
 		}
 		fmt.Fprint(f, "</table>")
-	 } else {fmt.Fprint(f, "<h2>All Findings</h2><p class='dim'>No findings at or above the configured threshold.</p>")
+	} else {
+		fmt.Fprint(f, "<h2>All Findings</h2><p class='dim'>No findings at or above the configured threshold.</p>")
 	}
 
 	fmt.Fprint(f, "</body></html>")

@@ -51,14 +51,14 @@ Usage:
 
 func analyzeCmd(args []string) {
 	fs := flag.NewFlagSet("analyze", flag.ExitOnError)
-	configPath   := fs.String("config", "", "Path to YAML config (optional)")
-	inPath       := fs.String("path", "", "Path to input JCL directory")
-	outDir       := fs.String("out", "", "Output directory for reports")
-	dbPath       := fs.String("db", "", "SQLite database path")
-	mipsUSD      := fs.Float64("mips-usd", 0, "USD per MIPS unit (optional)")
-	sevThresh    := fs.String("severity-threshold", "", "Minimum severity to report (LOW|MEDIUM|HIGH)")
+	configPath := fs.String("config", "", "Path to YAML config (optional)")
+	inPath := fs.String("path", "", "Path to input JCL directory")
+	outDir := fs.String("out", "", "Output directory for reports")
+	dbPath := fs.String("db", "", "SQLite database path")
+	mipsUSD := fs.Float64("mips-usd", 0, "USD per MIPS unit (optional)")
+	sevThresh := fs.String("severity-threshold", "", "Minimum severity to report (LOW|MEDIUM|HIGH)")
 	rulesDisable := fs.String("rules-disable", "", "Comma-separated rule IDs to disable")
-	failOn       := fs.Bool("fail-on-findings", false, "Exit non-zero if any findings remain after threshold/disable")
+	failOn := fs.Bool("fail-on-findings", false, "Exit non-zero if any findings remain after threshold/disable")
 	_ = fs.Parse(args)
 
 	// Load config + init logger
@@ -172,7 +172,6 @@ func analyzeCmd(args []string) {
 	}
 }
 
-
 func reportCmd(args []string) {
 	fs := flag.NewFlagSet("report", flag.ExitOnError)
 	configPath := fs.String("config", "", "Path to YAML config (optional)")
@@ -247,14 +246,17 @@ func diffCmd(args []string) {
 
 	br, err := db.LoadRun(*base)
 	if err != nil {
-		slog.Error("load base run error", "err", err); os.Exit(1)
+		slog.Error("load base run error", "err", err)
+		os.Exit(1)
 	}
 	hr, err := db.LoadRun(*head)
 	if err != nil {
-		slog.Error("load head run error", "err", err); os.Exit(1)
+		slog.Error("load head run error", "err", err)
+		os.Exit(1)
 	}
 	if err := os.MkdirAll(*outDir, 0o755); err != nil {
-		slog.Error("cannot create out dir", "err", err); os.Exit(1)
+		slog.Error("cannot create out dir", "err", err)
+		os.Exit(1)
 	}
 	path, _ := reporting.WriteDiffJSON(*base, *head, *outDir, &br, &hr)
 	fmt.Printf("Diff OK\n  %s\n", path)

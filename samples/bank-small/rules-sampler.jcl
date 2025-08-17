@@ -1,0 +1,24 @@
+//RULES    JOB (12345),'RULES',CLASS=A,MSGCLASS=X,NOTIFY=&SYSUID
+//* S0: COND misuse on FIRST step
+//S0       EXEC PGM=IEFBR14,COND=EVEN
+//S0DD     DD   DSN=DUMMY.DATA,DISP=SHR
+//* S1: IDCAMS REPRO identity copy (no selection clauses)
+//S1       EXEC PGM=IDCAMS
+//SYSIN    DD   *
+  REPRO INDATASET(IN.VSAM) OUTDATASET(OUT.VSAM)
+/*
+//* S2: SORT missing SYSIN
+//S2       EXEC PGM=SORT
+//SYSUT1   DD   DSN=IN.FILE,DISP=SHR
+//SYSUT2   DD   DSN=OUT.FILE,DISP=(NEW,CATLG,DELETE)
+//* (no SYSIN on purpose)
+//* S3: Temp dataset leakage (&& kept)
+//S3       EXEC PGM=IEFBR14
+//TMP1     DD   DSN=&&TMP1,DISP=(NEW,CATLG)
+//* S4: DISP=MOD append
+//S4       EXEC PGM=IEFBR14
+//MOD1     DD   DSN=SOME.DATA,DISP=MOD
+//* S5: GDG roll-off (read -1, write 0)
+//S5       EXEC PGM=IEFBR14
+//IN1      DD   DSN=BASE.FILE.GDG(-1),DISP=SHR
+//OUT1     DD   DSN=BASE.FILE.GDG(0),DISP=(NEW,CATLG)

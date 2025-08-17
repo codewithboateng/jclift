@@ -1,17 +1,10 @@
 //PAYROLL  JOB (12345),'DEMO RUN',CLASS=A,MSGCLASS=X,NOTIFY=&SYSUID
-//* -------------------------------------------------------------
-//* S1: SORT with identity copy + oversized SORTWK (cost findings)
-//* -------------------------------------------------------------
 //S1       EXEC PGM=SORT
 //SYSIN    DD *
   SORT  FIELDS=COPY
 /*
 //SORTWK01 DD UNIT=SYSDA,SPACE=(CYL,(900,50))
 //SORTWK02 DD UNIT=SYSDA,SPACE=(CYL,(700,50))
-
-//* -------------------------------------------------------------
-//* S2: IEBGENER full copy (redundant) + DISP=OLD (risk findings)
-//* -------------------------------------------------------------
 //S2       EXEC PGM=IEBGENER
 //SYSUT1   DD DSN=INPUT.FILE,DISP=SHR
 //SYSUT2   DD DSN=OUTPUT.FILE,DISP=(NEW,CATLG,DELETE)

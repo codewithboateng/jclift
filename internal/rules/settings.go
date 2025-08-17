@@ -3,14 +3,14 @@ package rules
 import "strings"
 
 type Settings struct {
-	SeverityThreshold       string
-	Disabled                map[string]bool
+	SeverityThreshold         string
+	Disabled                  map[string]bool
 	SortwkPrimaryCylThreshold int
 }
 
 var rsettings = Settings{
-	SeverityThreshold: "LOW",
-	Disabled:          map[string]bool{},
+	SeverityThreshold:         "LOW",
+	Disabled:                  map[string]bool{},
 	SortwkPrimaryCylThreshold: 500,
 }
 

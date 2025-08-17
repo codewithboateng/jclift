@@ -35,12 +35,12 @@ func evalIEBGENERRedundant(job *ir.Job) []ir.Finding {
 			}
 			if (sysin == "" || sysin == "DUMMY") && haveIn && haveOut {
 				out = append(out, ir.Finding{
-					RuleID:   "IEBGENER-REDUNDANT-COPY",
-					Type:     "COST",
-					Severity: "LOW",
-					Step:     st.Name,
-					Message:  "IEBGENER appears to copy the full dataset without filtering; consider inlining or eliminating redundant copies.",
-					Evidence: "SYSIN=DUMMY or empty; SYSUT1→SYSUT2 full copy.",
+					RuleID:      "IEBGENER-REDUNDANT-COPY",
+					Type:        "COST",
+					Severity:    "LOW",
+					Step:        st.Name,
+					Message:     "IEBGENER appears to copy the full dataset without filtering; consider inlining or eliminating redundant copies.",
+					Evidence:    "SYSIN=DUMMY or empty; SYSUT1→SYSUT2 full copy.",
 					SavingsMIPS: 0.5, // placeholder; refined by cost model later
 				})
 			}

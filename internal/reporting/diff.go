@@ -11,12 +11,12 @@ import (
 )
 
 type diffPayload struct {
-	BaseID  string         `json:"base_id"`
-	HeadID  string         `json:"head_id"`
-	Summary diffSummary    `json:"summary"`
-	New     []diffFinding  `json:"new"`
-	Removed []diffFinding  `json:"removed"`
-	Changed []diffChanged  `json:"changed"`
+	BaseID  string        `json:"base_id"`
+	HeadID  string        `json:"head_id"`
+	Summary diffSummary   `json:"summary"`
+	New     []diffFinding `json:"new"`
+	Removed []diffFinding `json:"removed"`
+	Changed []diffChanged `json:"changed"`
 }
 
 type diffSummary struct {
@@ -118,9 +118,12 @@ func WriteDiffJSON(baseID, headID, outDir string, base, head *ir.Run) (string, e
 
 func keyOf(f ir.Finding) string {
 	sb := strings.Builder{}
-	sb.WriteString(norm(f.RuleID)); sb.WriteByte('|')
-	sb.WriteString(norm(f.Job)); sb.WriteByte('|')
-	sb.WriteString(norm(f.Step)); sb.WriteByte('|')
+	sb.WriteString(norm(f.RuleID))
+	sb.WriteByte('|')
+	sb.WriteString(norm(f.Job))
+	sb.WriteByte('|')
+	sb.WriteString(norm(f.Step))
+	sb.WriteByte('|')
 	// evidence drives logical identity for many rules
 	sb.WriteString(norm(f.Evidence))
 	return sb.String()
