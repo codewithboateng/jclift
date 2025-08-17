@@ -1,0 +1,34 @@
+rules:
+  - id: "DSL-SORT-EMPTY-SYSIN"
+    summary: "SORT runs without SYSIN content"
+    type: "COST"
+    severity: "LOW"
+    message: "SORT has empty SYSIN; verify it isn't an unintended identity run."
+    where:
+      program: "^SORT$"
+      sysin_regex: "^(\\s*|)$" # empty or whitespace
+    savings:
+      kind: "step_cost"
+
+  - id: "DSL-IEBGENER-DUMMY"
+    summary: "IEBGENER with SYSIN DUMMY"
+    type: "COST"
+    severity: "LOW"
+    message: "IEBGENER full-copy (SYSIN DUMMY); consider inlining or eliminating redundant copies."
+    where:
+      program: "^IEBGENER$"
+      ddname: "SYSIN"
+      sysin_regex: "(?i)^\\s*DUMMY\\s*$"
+    savings:
+      kind: "step_cost"
+
+  - id: "DSL-SORT-FIELDS-COPY"
+    summary: "SORT identity copy via FIELDS=COPY"
+    type: "COST"
+    severity: "MEDIUM"
+    message: "SORT FIELDS=COPY (identity) — could be removed or merged upstream."
+    where:
+      program: "^SORT$"
+      sysin_regex: "(?i)FIELDS\\s*=\\s*COPY"
+    savings:
+      kind: "step_cost"

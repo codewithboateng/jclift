@@ -259,3 +259,8 @@ pkg-airgap: build ## Create a tarball with binary + configs + sample
 	@cp -a samples/* dist/pkg/samples/ 2>/dev/null || true
 	@tar -C dist -czf dist/jclift-airgap.tgz pkg
 	@echo "Wrote dist/jclift-airgap.tgz"
+
+.PHONY: analyze-dsl
+analyze-dsl: build ## Analyze using a DSL rules pack: make analyze-dsl PACK=configs/rules.example.yaml
+	@test -n "$(PACK)" || { echo "Usage: make analyze-dsl PACK=path/to/rules.yaml"; exit 2; }
+	$(BIN) analyze --path $(SAMPLES) --out $(REPORTS) --config $(CFG) --rules-pack $(PACK)

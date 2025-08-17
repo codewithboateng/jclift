@@ -14,8 +14,10 @@ import (
 	"github.com/codewithboateng/jclift/internal/parser"
 	"github.com/codewithboateng/jclift/internal/reporting"
 	"github.com/codewithboateng/jclift/internal/rules"
+	"github.com/codewithboateng/jclift/internal/rulesdsl"
 	"github.com/codewithboateng/jclift/internal/shared"
 	"github.com/codewithboateng/jclift/internal/storage"
+
 )
 
 func main() {
@@ -58,37 +60,26 @@ func analyzeCmd(args []string) {
 	mipsUSD      := fs.Float64("mips-usd", 0, "USD per MIPS unit (optional)")
 	sevThresh    := fs.String("severity-threshold", "", "Minimum severity to report (LOW|MEDIUM|HIGH)")
 	rulesDisable := fs.String("rules-disable", "", "Comma-separated rule IDs to disable")
+	rulesPack    := fs.String("rules-pack", "", "Path to YAML rule pack (DSL)") // ✅ define BEFORE Parse
 	failOn       := fs.Bool("fail-on-findings", false, "Exit non-zero if any findings remain after threshold/disable")
 	_ = fs.Parse(args)
 
 	// Load config + init logger
 	cfg, _ := shared.LoadConfig(*configPath)
 	logger := shared.InitLogger(cfg.Logging.Format, cfg.Logging.Level)
-	_ = logger // keep referenced
+	_ = logger
 
 	// Precedence: flags > config > defaults
-	if *inPath == "" && len(cfg.Analysis.Sources) > 0 {
-		*inPath = cfg.Analysis.Sources[0]
-	}
-	if *outDir == "" {
-		*outDir = cfg.Reporting.OutDir
-	}
-	if *dbPath == "" {
-		*dbPath = cfg.Database.DSN
-	}
-	if *mipsUSD == 0 && cfg.Analysis.MIPSToUSD > 0 {
-		*mipsUSD = cfg.Analysis.MIPSToUSD
-	}
+	if *inPath == "" && len(cfg.Analysis.Sources) > 0 { *inPath = cfg.Analysis.Sources[0] }
+	if *outDir == "" { *outDir = cfg.Reporting.OutDir }
+	if *dbPath == "" { *dbPath = cfg.Database.DSN }
+	if *mipsUSD == 0 && cfg.Analysis.MIPSToUSD > 0 { *mipsUSD = cfg.Analysis.MIPSToUSD }
 
 	// Severity threshold + disabled rules
 	sth := cfg.Rules.SeverityThreshold
-	if *sevThresh != "" {
-		sth = *sevThresh
-	}
+	if *sevThresh != "" { sth = *sevThresh }
 	disable := map[string]bool{}
-	for _, id := range cfg.Rules.Disable {
-		disable[strings.ToUpper(strings.TrimSpace(id))] = true
-	}
+	for _, id := range cfg.Rules.Disable { disable[strings.ToUpper(strings.TrimSpace(id))] = true }
 	if *rulesDisable != "" {
 		for _, id := range strings.Split(*rulesDisable, ",") {
 			disable[strings.ToUpper(strings.TrimSpace(id))] = true
@@ -123,11 +114,9 @@ func analyzeCmd(args []string) {
 	run.Context.MIPSToUSD = *mipsUSD
 	run.Context.RuleSeverityThreshold = sth
 	run.Context.DisabledRules = make([]string, 0, len(disable))
-	for id := range disable {
-		run.Context.DisabledRules = append(run.Context.DisabledRules, id)
-	}
+	for id := range disable { run.Context.DisabledRules = append(run.Context.DisabledRules, id) }
 
-	// ✅ Inject geometry & model from config into Context (used by cost/size)
+	// Inject geometry & model into Context
 	run.Context.Geometry.TracksPerCyl  = cfg.Cost.Geometry.TracksPerCyl
 	run.Context.Geometry.BytesPerTrack = cfg.Cost.Geometry.BytesPerTrack
 	run.Context.Model.MIPSPerCPU = cfg.Cost.Model.MIPSPerCPU
@@ -138,7 +127,16 @@ func analyzeCmd(args []string) {
 	run.Context.Model.IDAlpha    = cfg.Cost.Model.IDCAMS.Alpha
 	run.Context.Model.IDBeta     = cfg.Cost.Model.IDCAMS.Beta
 
-	// Cost annotate (now also attach SizeMB)
+	// ✅ Load optional DSL rules pack (after settings, before evaluation)
+	if *rulesPack != "" {
+		if n, err := rulesdsl.LoadAndRegister(*rulesPack); err != nil {
+			slog.Warn("rules pack load error", "err", err, "path", *rulesPack)
+		} else {
+			slog.Info("rules pack loaded", "count", n, "path", *rulesPack)
+		}
+	}
+
+	// Cost annotate (add SizeMB)
 	for i := range run.Jobs {
 		for j := range run.Jobs[i].Steps {
 			size := cost.EstimateSizeMB(&run.Jobs[i].Steps[j], run.Context.Geometry)
@@ -148,42 +146,23 @@ func analyzeCmd(args []string) {
 		}
 	}
 
-	// Evaluate rules (after gating)
+	// Evaluate rules
 	run.Findings = rules.Evaluate(&run)
 
-	// Persist to DB
+	// Persist & report
 	db, err := storage.OpenSQLite(*dbPath)
-	if err != nil {
-		slog.Error("db open error", "err", err)
-		os.Exit(1)
-	}
+	if err != nil { slog.Error("db open error", "err", err); os.Exit(1) }
 	defer db.Close()
-	if err := db.CreateSchema(); err != nil {
-		slog.Error("db schema error", "err", err)
-		os.Exit(1)
-	}
-	if err := db.SaveRun(&run); err != nil {
-		slog.Error("db save run error", "err", err)
-		os.Exit(1)
-	}
+	if err := db.CreateSchema(); err != nil { slog.Error("db schema error", "err", err); os.Exit(1) }
+	if err := db.SaveRun(&run); err != nil { slog.Error("db save run error", "err", err); os.Exit(1) }
 
-	// Reports
 	jsonPath, _ := reporting.WriteJSON(run.ID, *outDir, &run)
 	htmlPath, _ := reporting.WriteHTML(run.ID, *outDir, &run)
 
-	slog.Info("analyze complete",
-		"run", run.ID,
-		"json", jsonPath,
-		"html", htmlPath,
-		"db", filepath.Clean(*dbPath),
-	)
-	fmt.Printf("Analyze OK\n  Run: %s\n  JSON: %s\n  HTML: %s\n  DB: %s\n",
-		run.ID, jsonPath, htmlPath, filepath.Clean(*dbPath))
+	slog.Info("analyze complete", "run", run.ID, "json", jsonPath, "html", htmlPath, "db", filepath.Clean(*dbPath))
+	fmt.Printf("Analyze OK\n  Run: %s\n  JSON: %s\n  HTML: %s\n  DB: %s\n", run.ID, jsonPath, htmlPath, filepath.Clean(*dbPath))
 
-	// CI gate: exit non-zero *after* persisting and writing reports
-	if *failOn && len(run.Findings) > 0 {
-		os.Exit(3)
-	}
+	if *failOn && len(run.Findings) > 0 { os.Exit(3) }
 }
 
 func reportCmd(args []string) {
