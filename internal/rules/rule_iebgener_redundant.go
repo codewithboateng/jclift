@@ -8,11 +8,15 @@ import (
 
 func init() {
 	Register(Rule{
-		ID:      "IEBGENER-REDUNDANT-COPY",
-		Summary: "IEBGENER copies entire dataset without filtering; may be redundant.",
-		Eval:    evalIEBGENERRedundant,
+		ID:              "IEBGENER-REDUNDANT-COPY",
+		Summary:         "IEBGENER copies entire dataset without filtering; may be redundant.",
+		Type:            "COST",
+		DefaultSeverity: "LOW",
+		Docs:            "docs/rules/IEBGENER-REDUNDANT-COPY.md",
+		Eval:            evalIEBGENERRedundant,
 	})
 }
+
 
 func evalIEBGENERRedundant(job *ir.Job) []ir.Finding {
 	var out []ir.Finding

@@ -8,11 +8,15 @@ import (
 
 func init() {
 	Register(Rule{
-		ID:      "SORT-IDENTITY",
-		Summary: "SORT step appears to be a no-op (FIELDS=COPY or no effective key).",
-		Eval:    evalSortIdentity,
+		ID:              "SORT-IDENTITY",
+		Summary:         "SORT step appears to be a no-op (FIELDS=COPY or no effective key).",
+		Type:            "COST",
+		DefaultSeverity: "MEDIUM",
+		Docs:            "docs/rules/SORT-IDENTITY.md",
+		Eval:            evalSortIdentity,
 	})
 }
+
 
 func evalSortIdentity(job *ir.Job) []ir.Finding {
 	var out []ir.Finding

@@ -4,15 +4,32 @@ info:
   version: 0.1.0
 servers:
   - url: http://localhost:8080
+
+tags:
+  - name: Health
+  - name: Runs
+  - name: Findings
+  - name: Rules
+  - name: Auth
+  - name: Me
+  - name: Waivers
+
 paths:
   /api/v1/health:
     get:
+      tags: [Health]
       summary: Health check
       responses:
         "200":
           description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+
   /api/v1/runs:
     get:
+      tags: [Runs]
       summary: List runs
       parameters:
         - in: query
@@ -24,8 +41,33 @@ paths:
       responses:
         "200":
           description: List of runs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/RunRow" }
+                  limit: { type: integer }
+                  offset: { type: integer }
+
+  /api/v1/runs/latest:
+    get:
+      tags: [Runs]
+      summary: Get the most recent run
+      responses:
+        "200":
+          description: Run payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+        "404": { description: No runs }
+
   /api/v1/runs/{id}:
     get:
+      tags: [Runs]
       summary: Get a run by ID
       parameters:
         - in: path
@@ -33,10 +75,17 @@ paths:
           required: true
           schema: { type: string }
       responses:
-        "200": { description: Run payload }
+        "200":
+          description: Run payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
         "404": { description: Not found }
+
   /api/v1/runs/{id}/findings:
     get:
+      tags: [Findings]
       summary: List findings for a run
       parameters:
         - in: path
@@ -47,18 +96,343 @@ paths:
           name: min_severity
           schema: { type: string, enum: [LOW, MEDIUM, HIGH], default: LOW }
       responses:
-        "200": { description: Findings }
-
-  /api/v1/runs/latest:
-    get:
-      summary: Get the most recent run
-      responses:
-        '200': { description: Run payload }
-        '404': { description: No runs }
+        "200":
+          description: Findings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  run_id: { type: string }
+                  min_severity: { type: string }
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Finding" }
 
   /api/v1/rules:
     get:
+      tags: [Rules]
       summary: List registered rules (IDs + summaries)
       responses:
-        '200': { description: Rule list }
+        "200":
+          description: Rule list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/RuleSummary" }
+                  count: { type: integer }
 
+  /api/v1/rules/meta:
+    get:
+      tags: [Rules]
+      summary: Detailed rule metadata (type, default severity, docs link)
+      responses:
+        "200":
+          description: Rule metadata list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/RuleMeta" }
+                  count: { type: integer }
+
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login (sets session cookie)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: Logged in
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: "Sets HttpOnly cookie jclift_session"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoginResponse" }
+        "401": { description: Invalid credentials }
+
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout (clears session cookie)
+      security: [{ cookieAuth: [] }]
+      responses:
+        "204": { description: Logged out }
+        "401": { description: Unauthorized }
+
+  /api/v1/me:
+    get:
+      tags: [Me]
+      summary: Current user info
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200":
+          description: Me
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "401": { description: Unauthorized }
+
+  /api/v1/waivers:
+    get:
+      tags: [Waivers]
+      summary: List waivers
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200":
+          description: Waiver list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Waiver" }
+                  count: { type: integer }
+        "401": { description: Unauthorized }
+    post:
+      tags: [Waivers]
+      summary: Create waiver (admin)
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WaiverCreate" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Waiver" }
+        "401": { description: Unauthorized }
+        "403": { description: Forbidden }
+
+  /api/v1/waivers/{id}/revoke:
+    post:
+      tags: [Waivers]
+      summary: Revoke waiver (admin)
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Revoked waiver (current state)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Waiver" }
+        "401": { description: Unauthorized }
+        "403": { description: Forbidden }
+        "404": { description: Not found }
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: jclift_session
+
+  schemas:
+    Health:
+      type: object
+      properties:
+        ok: { type: boolean }
+        timestamp: { type: string, format: date-time }
+
+    RunRow:
+      type: object
+      properties:
+        id: { type: string }
+        started_at: { type: string, format: date-time }
+        source: { type: string, nullable: true }
+        ir_version: { type: string, nullable: true }
+        findings: { type: integer }
+
+    Run:
+      type: object
+      properties:
+        id: { type: string }
+        started_at: { type: string, format: date-time }
+        source: { type: string, nullable: true }
+        ir_version: { type: string }
+        context: { $ref: "#/components/schemas/Context" }
+        jobs:
+          type: array
+          items: { $ref: "#/components/schemas/Job" }
+        findings:
+          type: array
+          items: { $ref: "#/components/schemas/Finding" }
+
+    Context:
+      type: object
+      properties:
+        mips_to_usd: { type: number }
+        rule_severity_threshold: { type: string }
+        disabled_rules:
+          type: array
+          items: { type: string }
+        waived_count:
+          type: integer
+          description: Count of findings suppressed by waivers
+        geometry: { $ref: "#/components/schemas/Geometry" }
+        model: { $ref: "#/components/schemas/CostModel" }
+
+    Geometry:
+      type: object
+      properties:
+        tracks_per_cyl: { type: integer }
+        bytes_per_track: { type: integer }
+
+    CostModel:
+      type: object
+      properties:
+        mips_per_cpu: { type: number }
+        sort_alpha: { type: number }
+        sort_beta: { type: number }
+        copy_alpha: { type: number }
+        copy_beta: { type: number }
+        id_alpha: { type: number }
+        id_beta: { type: number }
+
+    Job:
+      type: object
+      properties:
+        name: { type: string }
+        class: { type: string, nullable: true }
+        owner: { type: string, nullable: true }
+        procs_resolved: { type: boolean, nullable: true }
+        steps:
+          type: array
+          items: { $ref: "#/components/schemas/Step" }
+
+    Step:
+      type: object
+      properties:
+        name: { type: string }
+        program: { type: string }
+        ordinal: { type: integer }
+        conditions: { type: string, nullable: true }
+        dd:
+          type: array
+          items: { $ref: "#/components/schemas/DD" }
+        annotations:
+          $ref: "#/components/schemas/Annotations"
+
+    DD:
+      type: object
+      properties:
+        ddname: { type: string }
+        dataset: { type: string, nullable: true }
+        disp: { type: string, nullable: true }
+        space: { type: string, nullable: true }
+        dcb: { type: string, nullable: true }
+        content: { type: string, nullable: true }
+        temp: { type: boolean, nullable: true }
+
+    Annotations:
+      type: object
+      properties:
+        cost: { $ref: "#/components/schemas/Cost" }
+        size_mb: { type: number, nullable: true }
+
+    Cost:
+      type: object
+      properties:
+        cpu_seconds: { type: number }
+        mips: { type: number }
+        usd: { type: number }
+
+    Finding:
+      type: object
+      properties:
+        id: { type: string }
+        job: { type: string }
+        step: { type: string, nullable: true }
+        rule_id: { type: string }
+        type: { type: string, enum: [COST, RISK] }
+        severity: { type: string, enum: [LOW, MEDIUM, HIGH] }
+        message: { type: string }
+        evidence: { type: string, nullable: true }
+        savings_mips: { type: number, nullable: true }
+        savings_usd: { type: number, nullable: true }
+        metadata:
+          type: object
+          additionalProperties: true
+
+    RuleSummary:
+      type: object
+      properties:
+        id: { type: string }
+        summary: { type: string }
+
+    RuleMeta:
+      type: object
+      properties:
+        id: { type: string }
+        summary: { type: string }
+        type: { type: string, enum: [COST, RISK] }
+        default_severity: { type: string, enum: [LOW, MEDIUM, HIGH] }
+        docs: { type: string, nullable: true }
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string, format: password }
+
+    LoginResponse:
+      type: object
+      properties:
+        username: { type: string }
+        role: { type: string }
+
+    Me:
+      type: object
+      properties:
+        username: { type: string }
+        role: { type: string }
+
+    Waiver:
+      type: object
+      properties:
+        id: { type: integer }
+        rule_id: { type: string }
+        job: { type: string, nullable: true }
+        step: { type: string, nullable: true }
+        pattern_sub: { type: string, nullable: true }
+        reason: { type: string }
+        expires_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        created_by: { type: string }
+        revoked_at: { type: string, format: date-time, nullable: true }
+        revoked_by: { type: string, nullable: true }
+        is_revoked: { type: boolean }
+
+    WaiverCreate:
+      type: object
+      required: [rule_id, reason]
+      properties:
+        rule_id: { type: string }
+        job: { type: string, nullable: true }
+        step: { type: string, nullable: true }
+        pattern_sub: { type: string, nullable: true }
+        reason: { type: string }
+        expires_at: { type: string, format: date-time, nullable: true }

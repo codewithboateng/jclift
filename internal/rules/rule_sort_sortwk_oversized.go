@@ -14,11 +14,15 @@ var cylRe = regexp.MustCompile(`\b(CYL|TRK)\s*,?\s*\(\s*(\d+)`)
 
 func init() {
 	Register(Rule{
-		ID:      "SORT-SORTWK-OVERSIZED",
-		Summary: "SORTWK work space appears oversized; consider tuning.",
-		Eval:    evalSortwkOversized,
+		ID:              "SORT-SORTWK-OVERSIZED",
+		Summary:         "SORTWK work space appears oversized; consider tuning.",
+		Type:            "COST",
+		DefaultSeverity: "LOW",
+		Docs:            "docs/rules/SORT-SORTWK-OVERSIZED.md",
+		Eval:            evalSortwkOversized,
 	})
 }
+
 
 func evalSortwkOversized(job *ir.Job) []ir.Finding {
 	var out []ir.Finding

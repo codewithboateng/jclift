@@ -337,3 +337,8 @@ waiver-create: ## Create waiver: RULE=<id> [JOB=payroll STEP=S1 PAT=substring RE
 waiver-revoke: ## Revoke waiver: make waiver-revoke ID=1
 	@test -n "$(ID)" || { echo "Usage: make waiver-revoke ID=<waiver_id>"; exit 2; }
 	@curl -s -b $(COOKIE) -X POST '$(API)/api/v1/waivers/$(ID)/revoke' | jq .
+
+.PHONY: api-rules-meta
+api-rules-meta: ## Extended rule metadata
+	@curl -s "$(API)/api/v1/rules/meta" | jq .
+

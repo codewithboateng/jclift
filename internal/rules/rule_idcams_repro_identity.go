@@ -13,11 +13,15 @@ var reHasFiles = regexp.MustCompile(`(?i)\b(INFILE|OUTFILE|INDATASET|OUTDATASET)
 
 func init() {
 	Register(Rule{
-		ID:      "IDCAMS-REPRO-IDENTITY",
-		Summary: "IDCAMS REPRO appears to copy without filtering.",
-		Eval:    evalIDCAMSReproIdentity,
+		ID:              "IDCAMS-REPRO-IDENTITY",
+		Summary:         "IDCAMS REPRO appears to copy without filtering.",
+		Type:            "COST",
+		DefaultSeverity: "LOW",
+		Docs:            "docs/rules/IDCAMS-REPRO-IDENTITY.md",
+		Eval:            evalIDCAMSReproIdentity,
 	})
 }
+
 
 func evalIDCAMSReproIdentity(job *ir.Job) []ir.Finding {
 	var out []ir.Finding

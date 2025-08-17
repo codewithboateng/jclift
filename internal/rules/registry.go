@@ -9,9 +9,15 @@ import (
 	"github.com/codewithboateng/jclift/internal/ir"
 )
 
-var registry []Rule
+var (
+	registry  []Rule
+	ruleIndex = map[string]int{} // UPPER(ruleID) -> index
+)
 
-func Register(r Rule) { registry = append(registry, r) }
+func Register(r Rule) {
+	registry = append(registry, r)
+	ruleIndex[strings.ToUpper(strings.TrimSpace(r.ID))] = len(registry) - 1
+}
 
 func List() []Rule {
 	out := make([]Rule, 0, len(registry))
@@ -28,33 +34,57 @@ func List() []Rule {
 func Evaluate(run *ir.Run) []ir.Finding {
 	var all []ir.Finding
 	rs := List()
+
+	seen := make(map[string]struct{}) // finding IDs seen in this run
+	seq := 0
+
+	put := func(id string) bool {
+		if _, ok := seen[id]; ok {
+			return false
+		}
+		seen[id] = struct{}{}
+		return true
+	}
+
 	for i := range run.Jobs {
 		job := &run.Jobs[i]
 		for _, rule := range rs {
 			fs := rule.Eval(job)
 			for k := range fs {
-				if fs[k].ID == "" {
-					fs[k].ID = makeID(rule.ID, job.Name, fs[k].Step, fs[k].Evidence, k)
-				}
+				// Ensure Job is set
 				if fs[k].Job == "" {
 					fs[k].Job = job.Name
 				}
-				// drop below-threshold findings
-				if !severityOK(fs[k].Severity) {
-					continue
-				}
+				// Compute USD from MIPS if configured
 				if fs[k].SavingsUSD == 0 && fs[k].SavingsMIPS > 0 && run.Context.MIPSToUSD > 0 {
 					fs[k].SavingsUSD = fs[k].SavingsMIPS * run.Context.MIPSToUSD
 				}
-				all = append(all, fs[k])
+				// Guarantee unique ID within the run
+				id := fs[k].ID
+				if id == "" || !put(id) {
+					// Assign a fresh, run-local unique id
+					for {
+						seq++
+						candidate := fmt.Sprintf("%s-%06d", rule.ID, seq)
+						if put(candidate) {
+							id = candidate
+							break
+						}
+					}
+					fs[k].ID = id
+				}
 			}
+			all = append(all, fs...)
 		}
 	}
+
+	// Stable order for reproducible outputs
+	sev := map[string]int{"HIGH": 3, "MEDIUM": 2, "LOW": 1}
 	sort.Slice(all, func(i, j int) bool {
 		if all[i].Severity == all[j].Severity {
 			return all[i].ID < all[j].ID
 		}
-		return severityRank(all[i].Severity) > severityRank(all[j].Severity)
+		return sev[all[i].Severity] > sev[all[j].Severity]
 	})
 	return all
 }
@@ -64,3 +94,13 @@ func makeID(ruleID, job, step, evidence string, idx int) string {
 	sum := crc32.ChecksumIEEE([]byte(data))
 	return fmt.Sprintf("%s-%08x", ruleID, sum)
 }
+
+// Get returns a rule by ID if registered (used by HTML report to link docs).
+func Get(id string) (Rule, bool) {
+	idx, ok := ruleIndex[strings.ToUpper(strings.TrimSpace(id))]
+	if !ok || idx < 0 || idx >= len(registry) {
+		return Rule{}, false
+	}
+	return registry[idx], true
+}
+

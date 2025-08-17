@@ -89,6 +89,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/waivers", withCORS(withAdmin(s, s.handleCreateWaiver, "waivers:create")))
 	mux.HandleFunc("POST /api/v1/waivers/{id}/revoke", withCORS(withAdmin(s, s.handleRevokeWaiver, "waivers:revoke")))
 
+	mux.HandleFunc("GET /api/v1/rules/meta", withCORS(s.handleRulesMeta))
+
 	// Fallback 404
 	mux.HandleFunc("/", withCORS(func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)

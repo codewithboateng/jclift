@@ -29,7 +29,7 @@ func OpenSQLite(path string) (*DB, error) {
 
 func (db *DB) Close() error { return db.conn.Close() }
 
-// CreateSchema ensures tables exist.
+// CreateSchema ensures tables (and compatibility views) exist.
 func (db *DB) CreateSchema() error {
 	_, err := db.conn.Exec(`
 CREATE TABLE IF NOT EXISTS runs (
@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS runs (
   ir_version TEXT,
   run_json   TEXT NOT NULL
 );
+
 CREATE TABLE IF NOT EXISTS findings (
   id           TEXT,
   run_id       TEXT NOT NULL,
@@ -54,6 +55,7 @@ CREATE TABLE IF NOT EXISTS findings (
   PRIMARY KEY (id, run_id),
   FOREIGN KEY(run_id) REFERENCES runs(id) ON DELETE CASCADE
 );
+
 CREATE INDEX IF NOT EXISTS idx_findings_run ON findings(run_id);
 CREATE INDEX IF NOT EXISTS idx_findings_rule ON findings(rule_id);
 
@@ -64,6 +66,7 @@ CREATE TABLE IF NOT EXISTS users (
   role TEXT NOT NULL DEFAULT 'viewer',
   created_at TEXT NOT NULL
 );
+
 CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL,
@@ -71,6 +74,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   created_at TEXT NOT NULL,
   FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
 CREATE TABLE IF NOT EXISTS audit (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ts TEXT NOT NULL,
@@ -92,8 +96,24 @@ CREATE TABLE IF NOT EXISTS waivers (
   created_at  TEXT NOT NULL,
   revoked_at  TEXT               -- NULL = active
 );
+
+-- ------------------------------------------------------------------
+-- Compatibility views for legacy summary queries (e.g., db-summary)
+-- These map expected legacy tables to the normalized schema.
+-- ------------------------------------------------------------------
+CREATE VIEW IF NOT EXISTS jobs AS
+SELECT DISTINCT job
+FROM findings
+WHERE job IS NOT NULL;
+
+CREATE VIEW IF NOT EXISTS steps AS
+SELECT DISTINCT job, step
+FROM findings
+WHERE job IS NOT NULL AND step IS NOT NULL;
 `)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -133,7 +153,19 @@ func (db *DB) SaveRun(run *ir.Run) error {
 		}
 		defer stmt.Close()
 		for _, f := range run.Findings {
-			if _, err := stmt.Exec(f.ID, run.ID, f.Job, f.Step, f.RuleID, f.Type, f.Severity, f.Message, f.Evidence, f.SavingsMIPS, f.SavingsUSD); err != nil {
+			if _, err := stmt.Exec(
+				f.ID,
+				run.ID,
+				f.Job,
+				f.Step,
+				f.RuleID,
+				f.Type,
+				f.Severity,
+				f.Message,
+				f.Evidence,
+				f.SavingsMIPS,
+				f.SavingsUSD,
+			); err != nil {
 				return err
 			}
 		}
