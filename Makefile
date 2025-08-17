@@ -199,3 +199,16 @@ ci-smoke: build ## Run LOW→MEDIUM→HIGH passes and print rule counts for each
 	    echo "(sqlite3 not found; skipping DB summary)"; \
 	  fi; \
 	done
+
+.PHONY: test fuzz bench
+test: ## Run unit tests (including golden-ish checks)
+	@echo "==> go test"
+	@go test ./test/... -count=1
+
+fuzz: ## Run parser fuzz for a short time (requires Go 1.18+)
+	@echo "==> go fuzz (parser)"
+	@go test ./test/fuzz -run=Fuzz -fuzz=Fuzz -fuzztime=5s
+
+bench: ## Run micro-benchmarks
+	@echo "==> go bench"
+	@go test ./test/perf -bench=Analyze -benchtime=2s -run=^$
