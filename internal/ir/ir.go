@@ -15,8 +15,11 @@ type Run struct {
 	Findings []Finding  `json:"findings,omitempty"`
 }
 type Context struct {
-	MIPSToUSD float64 `json:"mips_to_usd,omitempty"`
+	MIPSToUSD            float64  `json:"mips_to_usd,omitempty"`
+	RuleSeverityThreshold string   `json:"rule_severity_threshold,omitempty"`
+	DisabledRules        []string `json:"disabled_rules,omitempty"`
 }
+
 
 type Job struct {
 	Name        string `json:"name"`
@@ -68,3 +71,4 @@ type Finding struct {
 	SavingsUSD  float64 `json:"savings_usd,omitempty"`
 	Metadata  map[string]any `json:"metadata,omitempty"`
 }
+

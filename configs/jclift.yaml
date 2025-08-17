@@ -10,5 +10,11 @@ reporting:
   out_dir: ./reports
 
 logging:
-  format: json # or "text"
-  level: info # debug|info|warn|error
+  format: json
+  level: info
+
+rules:
+  severity_threshold: LOW # or MEDIUM/HIGH
+  disable: [] # e.g. ["DD-DUPLICATE-DATASET"]
+  sortwk:
+    primary_cyl_threshold: 500 # tune per site

@@ -9,23 +9,31 @@ import (
 
 type Config struct {
 	Database struct {
-		Driver string `yaml:"driver"` // "sqlite" (default)
-		DSN    string `yaml:"dsn"`    // "./jclift.db"
+		Driver string `yaml:"driver"`
+		DSN    string `yaml:"dsn"`
 	} `yaml:"database"`
 
 	Analysis struct {
-		Sources   []string `yaml:"sources"`     // ["./samples/bank-small"]
-		MIPSToUSD float64  `yaml:"mips_to_usd"` // 0 (optional)
+		Sources   []string `yaml:"sources"`
+		MIPSToUSD float64  `yaml:"mips_to_usd"`
 	} `yaml:"analysis"`
 
 	Reporting struct {
-		OutDir string `yaml:"out_dir"` // "./reports"
+		OutDir string `yaml:"out_dir"`
 	} `yaml:"reporting"`
 
 	Logging struct {
-		Format string `yaml:"format"` // "json"|"text"
-		Level  string `yaml:"level"`  // "info"|"debug"|"warn"|"error"
+		Format string `yaml:"format"` // json|text
+		Level  string `yaml:"level"`  // debug|info|warn|error
 	} `yaml:"logging"`
+
+	Rules struct {
+		SeverityThreshold string   `yaml:"severity_threshold"` // LOW|MEDIUM|HIGH
+		Disable           []string `yaml:"disable"`            // ["RULE-ID", ...]
+		Sortwk            struct {
+			PrimaryCylThreshold int `yaml:"primary_cyl_threshold"` // default 500
+		} `yaml:"sortwk"`
+	} `yaml:"rules"`
 }
 
 func DefaultConfig() Config {
@@ -35,6 +43,8 @@ func DefaultConfig() Config {
 	c.Reporting.OutDir = "./reports"
 	c.Logging.Format = "json"
 	c.Logging.Level = "info"
+	c.Rules.SeverityThreshold = "LOW"
+	c.Rules.Sortwk.PrimaryCylThreshold = 500
 	return c
 }
 
@@ -45,7 +55,7 @@ func LoadConfig(path string) (Config, error) {
 			_ = yaml.Unmarshal(b, &c)
 		}
 	}
-	// Env overrides (simple, explicit)
+	// Env overrides (example)
 	if v := os.Getenv("JCLIFT_DB_DSN"); v != "" {
 		c.Database.DSN = v
 	}

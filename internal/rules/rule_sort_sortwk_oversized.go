@@ -35,7 +35,7 @@ func evalSortwkOversized(job *ir.Job) []ir.Finding {
 				if m := cylRe.FindStringSubmatch(s); len(m) >= 3 {
 					// m[1] is unit, m[2] is the primary number
 					primary, _ := strconv.Atoi(m[2])
-					if primary > 500 { // simple heuristic threshold
+					if primary > rsettings.SortwkPrimaryCylThreshold {
 						overs++
 						evParts = append(evParts, dn+" SPACE="+dd.Space)
 					}
