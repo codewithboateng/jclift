@@ -1345,6 +1345,8 @@ Project savings → Show managers: “Fixing these 20 jobs saves X MIPS = $250,0
 Report-ready → Executives finally see where the money is going.
 
 ✅ Plain English:
-Banks are literally paying IBM extra money every night because their JCL has sloppy SORT and copy jobs. Each wasted CPU cycle = bigger MIPS bill. Your tool spots those hidden inefficiencies and translates them into a dollar figure management can act on.
+Banks are literally paying IBM extra money every night because their JCL has sloppy SORT and copy jobs. 
+Each wasted CPU cycle = bigger MIPS bill. Y
+our tool spots those hidden inefficiencies and translates them into a dollar figure management can act on.
 
 Would you like me to also break down a concrete example JCL job (with a bad SORTWK or IEBGENER) and show before vs after what your analyzer would flag and how much MIPS it would save? That would give you a killer demo script.
