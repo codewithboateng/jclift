@@ -127,7 +127,7 @@ All rights reserved. Contact for enterprise licensing and pilots.
 
 ## 📬 Contact
 
-**Email:** team@jclift.io  
-**Website:** [https://jclift.io](https://jclift.io)
+**Email:** kwaku.oboateng@outlook.com  
+**Website:** Coming soon)
 
 > “Cut MIPS spend and eliminate JCL risk — without touching COBOL.”
